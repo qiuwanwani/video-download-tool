@@ -1,0 +1,4 @@
+# 在此文件中添加cookies
+# 格式: cookie_name=cookie_value
+# 例如从浏览器开发者工具复制的抖音cookies
+# 注意: 每行一个cookie，格式为 name=value
