@@ -59,16 +59,21 @@
           <div class="flex flex-col md:flex-row gap-4">
             <input
               v-model="videoUrl"
-              type="url"
-              placeholder="请输入视频URL"
+              type="text"
+              placeholder="请输入视频URL或粘贴分享链接文本"
               class="flex-1 px-6 py-4 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-[#E11D48] transition-all"
               required
             />
             <button
               type="submit"
-              class="px-8 py-4 bg-[#E11D48] hover:bg-[#be123c] text-white font-medium rounded-xl transition-all transform hover:scale-105 shadow-lg"
+              :disabled="isParsing"
+              class="px-8 py-4 bg-[#E11D48] hover:bg-[#be123c] disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-all transform hover:scale-105 disabled:hover:scale-100 shadow-lg flex items-center gap-2"
             >
-              解析视频
+              <svg v-if="isParsing" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {{ isParsing ? '解析中...' : '解析视频' }}
             </button>
           </div>
           <p v-if="error" class="mt-4 text-[#E11D48] text-sm animate-fade-in">
@@ -183,8 +188,8 @@
         </div>
         
         <!-- 视频播放模态框 -->
-        <div v-if="isPlaying" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80">
-          <div class="bg-[#0F0F23] rounded-xl shadow-2xl p-6 max-w-4xl w-full mx-4">
+        <div v-if="isPlaying" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80" @click="closeVideoPlayer">
+          <div class="bg-[#0F0F23] rounded-xl shadow-2xl p-6 max-w-4xl w-full mx-4" @click.stop>
             <div class="flex justify-between items-center mb-4">
               <h3 class="text-xl font-bold text-white font-['Poppins']">视频播放</h3>
               <button @click="closeVideoPlayer" class="text-gray-400 hover:text-white transition-colors">
@@ -195,24 +200,11 @@
               </button>
             </div>
             <div class="aspect-video bg-black rounded-lg overflow-hidden">
-              <video :src="videoPlayerUrl" controls autoplay class="w-full h-full object-contain"></video>
+              <video :src="videoPlayerUrl" controls autoplay controlsList="nodownload" class="w-full h-full object-contain"></video>
             </div>
           </div>
         </div>
 
-        <!-- 下载进度 -->
-        <div v-if="downloadProgress > 0" class="mb-10 animate-fade-in">
-          <div class="flex justify-between mb-3">
-            <span class="font-medium text-gray-300">下载进度:</span>
-            <span class="font-medium text-white">{{ Math.round(downloadProgress) }}%</span>
-          </div>
-          <div class="w-full bg-gray-800 rounded-full h-3 overflow-hidden">
-            <div
-              class="bg-gradient-to-r from-[#E11D48] to-[#7E22CE] h-full rounded-full transition-all duration-300 ease-out"
-              :style="{ width: downloadProgress + '%' }"
-            ></div>
-          </div>
-        </div>
       </section>
 
       <!-- 下载历史 -->
@@ -458,26 +450,38 @@ export default {
       videoInfo: null,
       selectedFormat: '',
       error: '',
-      downloadProgress: 0,
       downloadHistory: JSON.parse(localStorage.getItem('downloadHistory') || '[]'),
       isPlaying: false,
-      videoPlayerUrl: ''
+      videoPlayerUrl: '',
+      isParsing: false
     };
   },
   methods: {
+    extractUrlFromText(text) {
+      // 从文本中提取URL
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const matches = text.match(urlRegex);
+      return matches ? matches[0] : text;
+    },
     async parseVideo() {
       try {
+        this.isParsing = true;
         this.error = '';
         this.videoInfo = null;
         this.selectedFormat = '';
         
+        // 从输入文本中提取URL
+        const extractedUrl = this.extractUrlFromText(this.videoUrl);
+        
         const response = await axios.get('http://localhost:8000/api/parse', {
-          params: { url: this.videoUrl }
+          params: { url: extractedUrl }
         });
         
         this.videoInfo = response.data;
       } catch (error) {
         this.error = error.response?.data?.detail || '解析失败，请检查URL是否正确';
+      } finally {
+        this.isParsing = false;
       }
     },
     async downloadVideo() {
@@ -485,29 +489,23 @@ export default {
       
       try {
         this.error = '';
-        this.downloadProgress = 0;
+        
+        // 从输入文本中提取URL
+        const extractedUrl = this.extractUrlFromText(this.videoUrl);
         
         const response = await axios.get('http://localhost:8000/api/download', {
           params: {
-            url: this.videoUrl,
+            url: extractedUrl,
             format_id: this.selectedFormat
           }
         });
         
-        // 模拟下载进度
-        let progress = 0;
-        const interval = setInterval(() => {
-          progress += 5;
-          this.downloadProgress = progress;
-          if (progress >= 100) {
-            clearInterval(interval);
-            // 保存到下载历史
-            this.saveToHistory(response.data);
-          }
-        }, 200);
+        // 保存到下载历史
+        this.saveToHistory(response.data);
         
-        // 打开下载链接
-        window.open(response.data.direct_link, '_blank');
+        // 使用后端代理下载，避免跨域和403问题
+        const downloadUrl = `http://localhost:8000/api/proxy-download?url=${encodeURIComponent(response.data.direct_link)}&filename=${encodeURIComponent(response.data.title)}.${response.data.ext}`;
+        window.open(downloadUrl, '_blank');
       } catch (error) {
         this.error = error.response?.data?.detail || '下载失败，请稍后重试';
       }
@@ -567,11 +565,11 @@ export default {
       const platforms = {
         'youtube.com': 'YouTube',
         'bilibili.com': 'B站',
+        'douyin.com': '抖音',
         'tiktok.com': 'TikTok',
         'instagram.com': 'Instagram',
         'twitter.com': 'Twitter',
         'facebook.com': 'Facebook',
-        'twitter.com': 'Twitter',
         'reddit.com': 'Reddit',
         'vimeo.com': 'Vimeo',
         'dailymotion.com': 'Dailymotion'
@@ -601,15 +599,32 @@ export default {
       // 格式化数字，添加千位分隔符
       return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     },
-    playVideo() {
-      // 简单的视频播放实现
-      // 实际项目中可能需要使用更复杂的视频播放器
+    async playVideo() {
+      // 播放视频
       if (this.videoInfo && this.videoInfo.formats && this.videoInfo.formats.length > 0) {
-        // 选择第一个格式作为播放源
-        const firstFormat = this.videoInfo.formats[0];
-        // 构建播放URL
-        this.videoPlayerUrl = `http://localhost:8000/api/get-direct-link?url=${encodeURIComponent(this.videoUrl)}&format_id=${firstFormat.format_id}`;
-        this.isPlaying = true;
+        try {
+          const firstFormat = this.videoInfo.formats[0];
+          
+          // 如果有预加载的代理地址（抖音），直接使用
+          if (this.videoInfo.proxy_urls && this.videoInfo.proxy_urls[firstFormat.format_id]) {
+            this.videoPlayerUrl = this.videoInfo.proxy_urls[firstFormat.format_id];
+            this.isPlaying = true;
+            return;
+          }
+          
+          // 其他平台（B站等）需要请求获取代理地址
+          const extractedUrl = this.extractUrlFromText(this.videoUrl);
+          const response = await axios.get('http://localhost:8000/api/get-direct-link', {
+            params: {
+              url: extractedUrl,
+              format_id: firstFormat.format_id
+            }
+          });
+          this.videoPlayerUrl = response.data.direct_link;
+          this.isPlaying = true;
+        } catch (error) {
+          this.error = '视频播放失败，请稍后重试';
+        }
       }
     },
     closeVideoPlayer() {
