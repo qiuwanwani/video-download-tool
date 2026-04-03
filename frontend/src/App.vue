@@ -1,21 +1,20 @@
 <template>
-  <div class="min-h-screen bg-black text-gray-100 font-['Open_Sans']">
+  <div class="min-h-screen font-['Open_Sans']">
     <!-- 导航栏 -->
-    <nav class="bg-[#0F0F23] bg-opacity-95 backdrop-blur-sm fixed top-4 left-4 right-4 z-50 rounded-xl shadow-lg transition-all duration-300">
+    <nav class="bg-[#0F0F23] bg-opacity-95 backdrop-blur-sm fixed top-4 left-4 right-4 z-50 rounded-xl transition-all duration-300" style="box-shadow: var(--shadow-lg);">
       <div class="max-w-7xl mx-auto px-6 py-4">
         <div class="flex justify-between items-center">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-gradient-to-r from-[#E11D48] to-[#7E22CE] flex items-center justify-center shadow-lg">
-              <span class="text-white font-bold text-xl font-['Poppins']">VD</span>
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center shadow-lg" :class="isDarkMode ? 'bg-gradient-to-r from-[#E11D48] to-[#7E22CE]' : 'bg-gradient-to-r from-[#F43F5E] to-[#A855F7]'">
+              <span class="font-bold text-xl font-['Poppins'] text-white">VD</span>
             </div>
-            <span class="text-xl font-bold text-white font-['Poppins']">视频下载工具</span>
+            <span class="text-xl font-bold font-['Poppins']" :class="isDarkMode ? 'text-white' : 'text-gray-800'">视频下载工具</span>
           </div>
           <div class="hidden md:flex items-center space-x-8">
-            <a href="#" class="text-gray-300 hover:text-white transition-colors font-medium">首页</a>
-            <a href="#" class="text-gray-300 hover:text-white transition-colors font-medium">使用教程</a>
-            <a href="#" class="text-gray-300 hover:text-white transition-colors font-medium">支持的平台</a>
-            <a href="#" class="text-gray-300 hover:text-white transition-colors font-medium">关于我们</a>
-            <button class="px-6 py-3 bg-[#E11D48] hover:bg-[#be123c] text-white rounded-lg font-medium transition-all transform hover:scale-105 shadow-lg flex items-center gap-2">
+            <a href="#" :class="isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors font-medium">首页</a>
+            <a href="#platforms" :class="isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors font-medium">支持的平台</a>
+            <a href="#faq" :class="isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors font-medium">常见问题</a>
+            <button class="px-6 py-3 rounded-lg font-medium transition-all transform hover:scale-105 flex items-center gap-2 btn-text-white" :class="isDarkMode ? 'bg-[#E11D48] hover:bg-[#be123c]' : 'bg-[#F43F5E] hover:bg-[#e11d48]'" style="box-shadow: var(--shadow-md);">
               <CrownIcon class="w-5 h-5" />
               升级VIP
             </button>
@@ -43,8 +42,8 @@
         <!-- 设备展示 -->
         <div class="max-w-3xl mx-auto">
           <div class="bg-[#0F0F23] rounded-3xl p-8 shadow-2xl border border-gray-800">
-            <div class="aspect-video bg-gray-900 rounded-xl overflow-hidden">
-              <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=video%20download%20tool%20interface%20modern%20dark%20theme&image_size=landscape_16_9" alt="视频下载工具界面" class="w-full h-full object-cover" />
+            <div class="aspect-video rounded-xl overflow-hidden">
+              <img :src="isDarkMode ? 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=video%20download%20tool%20interface%20modern%20dark%20theme&image_size=landscape_16_9' : 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=modern%20video%20download%20application%20light%20theme%20clean%20interface&image_size=landscape_16_9'" alt="视频下载工具界面" class="w-full h-full object-cover" />
             </div>
           </div>
         </div>
@@ -67,7 +66,11 @@
             <button
               type="submit"
               :disabled="isParsing"
-              class="px-8 py-4 bg-[#E11D48] hover:bg-[#be123c] disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-all transform hover:scale-105 disabled:hover:scale-100 shadow-lg flex items-center gap-2"
+              class="px-8 py-4 disabled:cursor-not-allowed font-medium rounded-xl transition-all transform hover:scale-105 disabled:hover:scale-100 flex items-center gap-2 btn-text-white"
+              :class="isDarkMode 
+                ? 'bg-[#E11D48] hover:bg-[#be123c] disabled:bg-gray-600' 
+                : 'bg-[#F43F5E] hover:bg-[#e11d48] disabled:bg-gray-400'"
+              style="box-shadow: var(--shadow-md);"
             >
               <svg v-if="isParsing" class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -88,13 +91,16 @@
               <div class="md:w-2/5">
                 <!-- 视频封面 -->
                 <div 
-                  class="rounded-xl overflow-hidden shadow-lg transform transition-all duration-300 hover:scale-105 border border-gray-700 cursor-pointer relative group"
+                  class="rounded-xl overflow-hidden shadow-lg transform transition-all duration-300 hover:scale-105 border border-gray-700 cursor-pointer relative group bg-gray-800"
                   @click="playVideo"
                 >
                   <img 
-                    :src="getProxyImageUrl(videoInfo.thumbnail)" 
-                    :alt="videoInfo.title" 
+                    :src="videoInfo.thumbnail" 
+                    :alt="videoInfo.title"
+                    loading="eager"
+                    decoding="async"
                     class="w-full h-auto object-cover transition-opacity duration-300 group-hover:opacity-70"
+                    @error="$event.target.src = getProxyImageUrl(videoInfo.thumbnail)"
                   />
                   <div class="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/70 to-transparent group-hover:from-black/80 transition-all duration-300">
                     <div class="transform transition-all duration-300 group-hover:scale-110">
@@ -154,31 +160,75 @@
                 </div>
               </div>
               <div class="md:w-3/5">
-                <h4 class="font-medium mb-4 text-gray-300">选择格式:</h4>
+                <h4 :class="isDarkMode ? 'text-gray-300' : 'text-gray-700'" class="font-medium mb-4">选择格式:</h4>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
                   <div
                     v-for="format in videoInfo.formats"
                     :key="format.format_id"
-                    class="border border-gray-700 rounded-lg p-4 cursor-pointer hover:bg-gray-900 transition-all transform hover:scale-[1.02]"
-                    :class="{
-                      'border-[#E11D48] bg-gray-800 shadow-lg shadow-[#E11D48]/20 ring-2 ring-[#E11D48]/30': selectedFormat === format.format_id
-                    }"
+                    :class="[
+                      'rounded-lg p-4 cursor-pointer transition-all transform hover:scale-[1.02]',
+                      isDarkMode ? 'border border-gray-700 hover:bg-gray-900' : 'border border-gray-300 hover:bg-gray-100',
+                      selectedFormat === format.format_id ? 'shadow-lg ring-2' : '',
+                      selectedFormat === format.format_id && isDarkMode ? 'border-[#E11D48] bg-gray-800 shadow-[#E11D48]/20 ring-[#E11D48]/30' : '',
+                      selectedFormat === format.format_id && !isDarkMode ? 'border-[#F43F5E] bg-gray-100 shadow-[#F43F5E]/20 ring-[#F43F5E]/30' : ''
+                    ]"
                     @click="selectedFormat = format.format_id"
                   >
-                    <div class="flex justify-between items-center">
-                      <span class="font-medium text-white">{{ format.resolution }}</span>
-                      <span class="text-sm text-gray-400">{{ format.ext }}</span>
-                    </div>
-                    <div v-if="format.filesize" class="text-sm text-gray-400 mt-2">
-                      {{ formatFilesize(format.filesize) }}
+                    <div class="flex justify-between items-start">
+                      <div class="flex-1 min-w-0">
+                        <!-- 第一行: 格式名称 + 扩展名 + 类型标签 -->
+                        <div class="flex items-center gap-2 mb-2">
+                          <span :class="isDarkMode ? 'text-white' : 'text-gray-800'" class="font-bold text-base truncate">
+                            {{ format.resolution === '音频' ? '音频' : format.resolution }}
+                          </span>
+                          <span 
+                            :class="isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'" 
+                            class="px-2 py-0.5 rounded text-xs font-medium uppercase flex-shrink-0"
+                          >
+                            {{ format.ext }}
+                          </span>
+                          <span 
+                            v-if="format.media_type === 'video' || format.media_type === 'audio' || format.media_type === 'merged'"
+                            :class="isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'" 
+                            class="px-2 py-0.5 rounded text-xs font-medium flex-shrink-0"
+                          >
+                            {{ format.media_type === 'video' ? '仅视频' : format.media_type === 'audio' ? '仅音频' : '音视频' }}
+                          </span>
+                        </div>
+                        
+                        <!-- 第二行: 编码信息 -->
+                        <div v-if="format.format_note || format.vcodec || format.acodec" class="text-sm mb-2" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'">
+                          <span v-if="format.format_note" class="font-medium">{{ format.format_note }}</span>
+                          <span v-if="format.format_note && (format.vcodec || format.acodec)"> · </span>
+                          <span v-if="format.vcodec">{{ format.vcodec }}</span>
+                          <span v-if="format.vcodec && format.acodec"> + </span>
+                          <span v-if="format.acodec">{{ format.acodec }}</span>
+                        </div>
+                        
+                        <!-- 第三行: 文件大小 -->
+                        <div v-if="format.filesize && format.filesize > 0" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm">
+                          <span class="font-medium">{{ formatFilesize(format.filesize) }}</span>
+                        </div>
+                        <div v-else :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'" class="text-sm">
+                          大小未知
+                        </div>
+                      </div>
+                      
+                      <div v-if="selectedFormat === format.format_id" class="ml-2 flex-shrink-0">
+                        <svg class="w-6 h-6 text-[#E11D48]" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <button
                   @click="downloadVideo"
-                  class="w-full py-4 bg-[#E11D48] hover:bg-[#be123c] text-white font-medium rounded-xl transition-all transform hover:scale-[1.02] shadow-lg"
+                  class="w-full py-4 font-medium rounded-xl transition-all transform hover:scale-[1.02] btn-text-white"
+                  :class="isDarkMode ? 'bg-[#E11D48] hover:bg-[#be123c]' : 'bg-[#F43F5E] hover:bg-[#e11d48]'"
                   :disabled="!selectedFormat"
+                  style="box-shadow: var(--shadow-md);"
                 >
                   下载视频
                 </button>
@@ -189,7 +239,7 @@
         
         <!-- 视频播放模态框 -->
         <div v-if="isPlaying" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80" @click="closeVideoPlayer">
-          <div class="bg-[#0F0F23] rounded-xl shadow-2xl p-6 max-w-4xl w-full mx-4" @click.stop>
+          <div class="rounded-xl shadow-2xl p-6 max-w-4xl w-full mx-4" @click.stop>
             <div class="flex justify-between items-center mb-4">
               <h3 class="text-xl font-bold text-white font-['Poppins']">视频播放</h3>
               <button @click="closeVideoPlayer" class="text-gray-400 hover:text-white transition-colors">
@@ -228,17 +278,19 @@
           <div
             v-for="(item, index) in downloadHistory"
             :key="index"
-            class="border border-gray-700 rounded-lg p-5 transition-all duration-300 hover:shadow-md transform hover:translate-y-[-2px] hover:bg-gray-900/50"
+            :class="isDarkMode ? 'border border-gray-700 hover:bg-gray-900/50' : 'border border-gray-300 hover:bg-gray-100'"
+            class="rounded-lg p-5 transition-all duration-300 hover:shadow-md transform hover:translate-y-[-2px]"
           >
             <div class="flex justify-between items-start">
               <div>
-                <h3 class="font-medium text-white">{{ item.title }}</h3>
-                <p class="text-sm text-gray-400 mt-1">{{ item.timestamp }}</p>
+                <h3 :class="isDarkMode ? 'text-white' : 'text-gray-800'" class="font-medium">{{ item.title }}</h3>
+                <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'" class="text-sm mt-1">{{ item.timestamp }}</p>
               </div>
               <a
                 :href="item.direct_link"
                 target="_blank"
-                class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors text-sm font-medium"
+                :class="isDarkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'"
+                class="px-4 py-2 rounded-lg transition-colors text-sm font-medium"
               >
                 重新下载
               </a>
@@ -254,7 +306,7 @@
           <p class="mb-8 text-lg text-gray-300">
             享受无限制下载、高速下载、批量下载等高级功能
           </p>
-          <button class="px-12 py-4 bg-[#E11D48] hover:bg-[#be123c] text-white font-bold rounded-xl hover:shadow-lg transition-all transform hover:scale-105 shadow-lg mb-10">
+          <button class="px-12 py-4 font-bold rounded-xl transition-all transform hover:scale-105 mb-10 btn-text-white" :class="isDarkMode ? 'bg-[#E11D48] hover:bg-[#be123c]' : 'bg-[#F43F5E] hover:bg-[#e11d48]'" style="box-shadow: var(--shadow-md);">
             立即升级
           </button>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
@@ -284,36 +336,36 @@
       </section>
 
       <!-- 支持的平台 -->
-      <section class="mb-20">
+      <section id="platforms" class="mb-20">
         <h2 class="text-3xl font-bold mb-10 text-center text-white font-['Poppins']">支持的平台</h2>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
           <div class="bg-[#0F0F23] rounded-xl shadow-lg p-6 text-center transition-all duration-300 hover:shadow-xl transform hover:translate-y-[-4px] border border-gray-800">
             <div class="flex justify-center mb-4">
-              <VideoIcon class="w-12 h-12 text-red-500" />
+              <YouTubeIcon class="w-12 h-12 text-[#FF0000]" />
             </div>
             <p class="font-medium text-white">YouTube</p>
           </div>
           <div class="bg-[#0F0F23] rounded-xl shadow-lg p-6 text-center transition-all duration-300 hover:shadow-xl transform hover:translate-y-[-4px] border border-gray-800">
             <div class="flex justify-center mb-4">
-              <ZapIcon class="w-12 h-12 text-cyan-500" />
+              <TikTokIcon class="w-12 h-12 text-white" />
             </div>
             <p class="font-medium text-white">TikTok</p>
           </div>
           <div class="bg-[#0F0F23] rounded-xl shadow-lg p-6 text-center transition-all duration-300 hover:shadow-xl transform hover:translate-y-[-4px] border border-gray-800">
             <div class="flex justify-center mb-4">
-              <VideoIcon class="w-12 h-12 text-pink-500" />
+              <BilibiliIcon class="w-12 h-12 text-[#00A1D6]" />
             </div>
             <p class="font-medium text-white">B站</p>
           </div>
           <div class="bg-[#0F0F23] rounded-xl shadow-lg p-6 text-center transition-all duration-300 hover:shadow-xl transform hover:translate-y-[-4px] border border-gray-800">
             <div class="flex justify-center mb-4">
-              <HeartIcon class="w-12 h-12 text-purple-500" />
+              <InstagramIcon class="w-12 h-12 text-[#E4405F]" />
             </div>
             <p class="font-medium text-white">Instagram</p>
           </div>
           <div class="bg-[#0F0F23] rounded-xl shadow-lg p-6 text-center transition-all duration-300 hover:shadow-xl transform hover:translate-y-[-4px] border border-gray-800">
             <div class="flex justify-center mb-4">
-              <LinkIcon class="w-12 h-12 text-blue-500" />
+              <TwitterIcon class="w-12 h-12 text-[#1DA1F2]" />
             </div>
             <p class="font-medium text-white">Twitter</p>
           </div>
@@ -327,38 +379,38 @@
       </section>
 
       <!-- 常见问题 -->
-      <section class="bg-[#0F0F23] rounded-2xl shadow-2xl p-10 mb-20 border border-gray-800">
+      <section id="faq" class="bg-[#0F0F23] rounded-2xl shadow-2xl p-10 mb-20 border border-gray-800">
         <h2 class="text-3xl font-bold mb-10 text-center text-white font-['Poppins']">常见问题</h2>
         <div class="space-y-4">
-          <div class="border border-gray-700 rounded-lg overflow-hidden">
-            <button class="w-full px-6 py-4 text-left font-medium flex justify-between items-center hover:bg-gray-900/50 transition-colors text-white">
+          <div :class="isDarkMode ? 'border border-gray-700' : 'border border-gray-300'" class="rounded-lg overflow-hidden">
+            <button @click="toggleFaq(0)" :class="isDarkMode ? 'hover:bg-gray-900/50 text-white' : 'hover:bg-gray-100 text-gray-800'" class="w-full px-6 py-4 text-left font-medium flex justify-between items-center transition-colors">
               <span>如何下载视频？</span>
-              <ArrowDownIcon class="w-5 h-5 text-gray-400" />
+              <ArrowDownIcon :class="['w-5 h-5 transition-transform duration-300', isDarkMode ? 'text-gray-400' : 'text-gray-500', isFaqExpanded(0) ? 'transform rotate-180' : '']" />
             </button>
-            <div class="px-6 py-4 bg-gray-900/30">
-              <p class="text-gray-400">
+            <div v-if="isFaqExpanded(0)" :class="isDarkMode ? 'bg-gray-900/30' : 'bg-gray-50'" class="px-6 py-4">
+              <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-600'">
                 只需在输入框中粘贴视频URL，点击解析视频，选择想要的格式，然后点击下载视频按钮即可。
               </p>
             </div>
           </div>
-          <div class="border border-gray-700 rounded-lg overflow-hidden">
-            <button class="w-full px-6 py-4 text-left font-medium flex justify-between items-center hover:bg-gray-900/50 transition-colors text-white">
+          <div :class="isDarkMode ? 'border border-gray-700' : 'border border-gray-300'" class="rounded-lg overflow-hidden">
+            <button @click="toggleFaq(1)" :class="isDarkMode ? 'hover:bg-gray-900/50 text-white' : 'hover:bg-gray-100 text-gray-800'" class="w-full px-6 py-4 text-left font-medium flex justify-between items-center transition-colors">
               <span>支持哪些网站？</span>
-              <ArrowDownIcon class="w-5 h-5 text-gray-400" />
+              <ArrowDownIcon :class="['w-5 h-5 transition-transform duration-300', isDarkMode ? 'text-gray-400' : 'text-gray-500', isFaqExpanded(1) ? 'transform rotate-180' : '']" />
             </button>
-            <div class="px-6 py-4 bg-gray-900/30">
-              <p class="text-gray-400">
+            <div v-if="isFaqExpanded(1)" :class="isDarkMode ? 'bg-gray-900/30' : 'bg-gray-50'" class="px-6 py-4">
+              <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-600'">
                 支持YouTube、B站、TikTok、Instagram、Twitter等1800+网站的视频下载。
               </p>
             </div>
           </div>
-          <div class="border border-gray-700 rounded-lg overflow-hidden">
-            <button class="w-full px-6 py-4 text-left font-medium flex justify-between items-center hover:bg-gray-900/50 transition-colors text-white">
+          <div :class="isDarkMode ? 'border border-gray-700' : 'border border-gray-300'" class="rounded-lg overflow-hidden">
+            <button @click="toggleFaq(2)" :class="isDarkMode ? 'hover:bg-gray-900/50 text-white' : 'hover:bg-gray-100 text-gray-800'" class="w-full px-6 py-4 text-left font-medium flex justify-between items-center transition-colors">
               <span>下载速度为什么很慢？</span>
-              <ArrowDownIcon class="w-5 h-5 text-gray-400" />
+              <ArrowDownIcon :class="['w-5 h-5 transition-transform duration-300', isDarkMode ? 'text-gray-400' : 'text-gray-500', isFaqExpanded(2) ? 'transform rotate-180' : '']" />
             </button>
-            <div class="px-6 py-4 bg-gray-900/30">
-              <p class="text-gray-400">
+            <div v-if="isFaqExpanded(2)" :class="isDarkMode ? 'bg-gray-900/30' : 'bg-gray-50'" class="px-6 py-4">
+              <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-600'">
                 下载速度受网络环境和视频源服务器影响。升级到VIP可以获得更快的下载速度。
               </p>
             </div>
@@ -367,55 +419,65 @@
       </section>
     </main>
 
+    <!-- 主题切换按钮 -->
+    <button 
+      @click="toggleDarkMode"
+      class="fixed bottom-6 right-6 z-50 p-4 rounded-full bg-[#1E1B4B] hover:bg-[#2D2B55] text-white shadow-lg transition-all duration-300 transform hover:scale-110 border border-gray-700"
+      title="切换主题"
+    >
+      <SunIcon v-if="isDarkMode" class="w-6 h-6" />
+      <MoonIcon v-else class="w-6 h-6" />
+    </button>
+
     <!-- 页脚 -->
     <footer class="bg-[#0F0F23] py-16 border-t border-gray-800">
       <div class="max-w-7xl mx-auto px-6">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
           <div>
-            <h3 class="text-lg font-bold mb-6 text-white font-['Poppins']">视频下载工具</h3>
-            <p class="text-gray-400 text-sm">
+            <h3 :class="isDarkMode ? 'text-white' : 'text-gray-800'" class="text-lg font-bold mb-6 font-['Poppins']">视频下载工具</h3>
+            <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-600'" class="text-sm">
               支持1800+网站的视频下载，简单易用，一键下载
             </p>
           </div>
           <div>
-            <h3 class="text-lg font-bold mb-6 text-white font-['Poppins']">快速链接</h3>
+            <h3 :class="isDarkMode ? 'text-white' : 'text-gray-800'" class="text-lg font-bold mb-6 font-['Poppins']">快速链接</h3>
             <ul class="space-y-3 text-sm">
-              <li><a href="#" class="text-gray-400 hover:text-white transition-colors">首页</a></li>
-              <li><a href="#" class="text-gray-400 hover:text-white transition-colors">使用教程</a></li>
-              <li><a href="#" class="text-gray-400 hover:text-white transition-colors">支持的平台</a></li>
-              <li><a href="#" class="text-gray-400 hover:text-white transition-colors">关于我们</a></li>
+              <li><a href="#" :class="isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors">首页</a></li>
+              <li><a href="#" :class="isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors">使用教程</a></li>
+              <li><a href="#" :class="isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors">支持的平台</a></li>
+              <li><a href="#" :class="isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors">关于我们</a></li>
             </ul>
           </div>
           <div>
-            <h3 class="text-lg font-bold mb-6 text-white font-['Poppins']">法律</h3>
+            <h3 :class="isDarkMode ? 'text-white' : 'text-gray-800'" class="text-lg font-bold mb-6 font-['Poppins']">法律</h3>
             <ul class="space-y-3 text-sm">
-              <li><a href="#" class="text-gray-400 hover:text-white transition-colors">隐私政策</a></li>
-              <li><a href="#" class="text-gray-400 hover:text-white transition-colors">使用条款</a></li>
-              <li><a href="#" class="text-gray-400 hover:text-white transition-colors">版权声明</a></li>
+              <li><a href="#" :class="isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors">隐私政策</a></li>
+              <li><a href="#" :class="isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors">使用条款</a></li>
+              <li><a href="#" :class="isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors">版权声明</a></li>
             </ul>
           </div>
           <div>
-            <h3 class="text-lg font-bold mb-6 text-white font-['Poppins']">联系我们</h3>
+            <h3 :class="isDarkMode ? 'text-white' : 'text-gray-800'" class="text-lg font-bold mb-6 font-['Poppins']">联系我们</h3>
             <ul class="space-y-3 text-sm">
-              <li class="text-gray-400">邮箱：contact@example.com</li>
-              <li class="text-gray-400">微信：video-download-tool</li>
+              <li :class="isDarkMode ? 'text-gray-400' : 'text-gray-600'">邮箱：contact@example.com</li>
+              <li :class="isDarkMode ? 'text-gray-400' : 'text-gray-600'">微信：video-download-tool</li>
             </ul>
           </div>
         </div>
-        <div class="border-t border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center">
+        <div :class="isDarkMode ? 'border-t border-gray-800' : 'border-t border-gray-200'" class="pt-8 flex flex-col md:flex-row justify-between items-center">
           <div class="mb-4 md:mb-0">
-            <p class="text-gray-400 text-sm">
+            <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-600'" class="text-sm">
               © 2026 视频下载工具. 保留所有权利.
             </p>
           </div>
           <div class="flex space-x-6">
-            <a href="#" class="text-gray-400 hover:text-white transition-colors">
+            <a href="#" :class="isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors">
               <VideoIcon class="w-6 h-6" />
             </a>
-            <a href="#" class="text-gray-400 hover:text-white transition-colors">
+            <a href="#" :class="isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors">
               <LinkIcon class="w-6 h-6" />
             </a>
-            <a href="#" class="text-gray-400 hover:text-white transition-colors">
+            <a href="#" :class="isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'" class="transition-colors">
               <DownloadIcon class="w-6 h-6" />
             </a>
           </div>
@@ -427,7 +489,7 @@
 
 <script>
 import axios from 'axios';
-import { FireIcon, VideoIcon, DownloadIcon, LinkIcon, CrownIcon, ShieldIcon, ZapIcon, HeartIcon, ArrowDownIcon, MoreIcon, PlayIcon } from './icons'
+import { FireIcon, VideoIcon, DownloadIcon, LinkIcon, CrownIcon, ShieldIcon, ZapIcon, HeartIcon, ArrowDownIcon, MoreIcon, PlayIcon, BilibiliIcon, YouTubeIcon, TikTokIcon, InstagramIcon, TwitterIcon, SunIcon, MoonIcon } from './icons'
 
 export default {
   name: 'App',
@@ -442,7 +504,14 @@ export default {
     HeartIcon,
     ArrowDownIcon,
     MoreIcon,
-    PlayIcon
+    PlayIcon,
+    BilibiliIcon,
+    YouTubeIcon,
+    TikTokIcon,
+    InstagramIcon,
+    TwitterIcon,
+    SunIcon,
+    MoonIcon
   },
   data() {
     return {
@@ -453,8 +522,17 @@ export default {
       downloadHistory: JSON.parse(localStorage.getItem('downloadHistory') || '[]'),
       isPlaying: false,
       videoPlayerUrl: '',
-      isParsing: false
+      isParsing: false,
+      expandedFaqs: [0], // 默认展开第一个问题
+      isDarkMode: true, // 默认暗色模式
+      parseSource: 'auto' // B站解析源: auto, injahow, ytdlp, both
     };
+  },
+  computed: {
+    isBilibiliUrl() {
+      const url = this.videoUrl.toLowerCase();
+      return url.includes('bilibili.com') || url.includes('b23.tv');
+    }
   },
   methods: {
     extractUrlFromText(text) {
@@ -603,21 +681,37 @@ export default {
       // 播放视频
       if (this.videoInfo && this.videoInfo.formats && this.videoInfo.formats.length > 0) {
         try {
-          const firstFormat = this.videoInfo.formats[0];
+          // 选择最高清晰度的格式
+          const highestFormat = this.videoInfo.formats[this.videoInfo.formats.length - 1];
           
-          // 如果有预加载的代理地址（抖音），直接使用
-          if (this.videoInfo.proxy_urls && this.videoInfo.proxy_urls[firstFormat.format_id]) {
-            this.videoPlayerUrl = this.videoInfo.proxy_urls[firstFormat.format_id];
+          // 如果有预加载的代理地址，直接使用
+          if (this.videoInfo.proxy_urls && this.videoInfo.proxy_urls[highestFormat.format_id]) {
+            this.videoPlayerUrl = this.videoInfo.proxy_urls[highestFormat.format_id];
             this.isPlaying = true;
             return;
           }
           
-          // 其他平台（B站等）需要请求获取代理地址
+          // B站视频使用 injahow 播放源
+          if (this.isBilibiliUrl) {
+            const extractedUrl = this.extractUrlFromText(this.videoUrl);
+            const response = await axios.get('http://localhost:8000/api/get-direct-link', {
+              params: {
+                url: extractedUrl,
+                format_id: highestFormat.format_id,
+                source: 'injahow'
+              }
+            });
+            this.videoPlayerUrl = response.data.direct_link;
+            this.isPlaying = true;
+            return;
+          }
+          
+          // 其他平台需要请求获取代理地址
           const extractedUrl = this.extractUrlFromText(this.videoUrl);
           const response = await axios.get('http://localhost:8000/api/get-direct-link', {
             params: {
               url: extractedUrl,
-              format_id: firstFormat.format_id
+              format_id: highestFormat.format_id
             }
           });
           this.videoPlayerUrl = response.data.direct_link;
@@ -630,6 +724,30 @@ export default {
     closeVideoPlayer() {
       this.isPlaying = false;
       this.videoPlayerUrl = '';
+    },
+    toggleFaq(index) {
+      const i = this.expandedFaqs.indexOf(index);
+      if (i > -1) {
+        this.expandedFaqs.splice(i, 1);
+      } else {
+        this.expandedFaqs.push(index);
+      }
+    },
+    isFaqExpanded(index) {
+      return this.expandedFaqs.includes(index);
+    },
+    toggleDarkMode() {
+      this.isDarkMode = !this.isDarkMode;
+      document.documentElement.classList.toggle('dark', this.isDarkMode);
+      localStorage.setItem('darkMode', this.isDarkMode);
+    }
+  },
+  mounted() {
+    // 从localStorage恢复主题设置
+    const savedMode = localStorage.getItem('darkMode');
+    if (savedMode !== null) {
+      this.isDarkMode = savedMode === 'true';
+      document.documentElement.classList.toggle('dark', this.isDarkMode);
     }
   }
 };
@@ -646,22 +764,152 @@ export default {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+</style>
+
+<style>
+/* 全局样式 */
+:root {
+  --bg-primary: #0F0F23;
+  --bg-secondary: #1E1B4B;
+  --bg-tertiary: #1a1a3a;
+  --text-primary: #ffffff;
+  --text-secondary: #e5e5e5;
+  --text-muted: #a3a3a3;
+  --border-color: #33334d;
+  --accent-color: #E11D48;
+  --accent-hover: #be123c;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+}
+
+/* 亮模式 */
+:root:not(.dark) {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --text-primary: #1e293b;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --accent-color: #F43F5E;
+  --accent-hover: #e11d48;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+/* 应用主题变量 */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: all 0.3s ease;
+}
+
+/* 覆盖默认样式 */
+.bg-\[\#0F0F23\],
+.bg-gray-900,
+.bg-gray-800 {
+  background-color: var(--bg-primary) !important;
+}
+
+.bg-\[\#1E1B4B\],
+.bg-gray-900\/50 {
+  background-color: var(--bg-secondary) !important;
+}
+
+.bg-gray-900\/30 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.text-white {
+  color: var(--text-primary) !important;
+}
+
+/* 按钮文字颜色 - 始终为白色 */
+.btn-text-white {
+  color: white !important;
+}
+
+.text-gray-400,
+.text-gray-500,
+.text-gray-600 {
+  color: var(--text-muted) !important;
+}
+
+.border-gray-800,
+.border-gray-700 {
+  border-color: var(--border-color) !important;
+}
+
+/* 移除可能导致冲突的覆盖规则，让按钮颜色能正确响应:class绑定 */
+
+.text-gray-300 {
+  color: var(--text-secondary) !important;
+}
+
+.hover\:text-white:hover {
+  color: var(--text-primary) !important;
+}
+
+/* 按钮文字悬浮时保持白色 */
+.btn-text-white:hover {
+  color: white !important;
+}
+
+/* 主题切换按钮 */
+.fixed.bottom-6.right-6 {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.fixed.bottom-6.right-6:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+
+/* 模态框 */
+.fixed.inset-0 {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+}
+
+.fixed.inset-0 > div {
+  background-color: var(--bg-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* 渐变背景 */
+.bg-gradient-to-r {
+  background: linear-gradient(to right, var(--bg-secondary), var(--bg-primary)) !important;
+}
+
+/* 页脚样式 */
+footer {
+  background-color: var(--bg-primary) !important;
+  border-top-color: var(--border-color) !important;
+}
+
+footer h3 {
+  color: var(--text-primary) !important;
+}
+
+footer p {
+  color: var(--text-muted) !important;
+}
+
+footer a {
+  color: var(--text-muted) !important;
+}
+
+footer a:hover {
+  color: var(--text-primary) !important;
 }
 </style>

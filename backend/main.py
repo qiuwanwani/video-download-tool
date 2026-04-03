@@ -55,18 +55,44 @@ async def parse_bilibili_with_injahow(url: str) -> Dict[str, Any]:
             
             accept_quality = injahow_data.get('accept_quality', [64])
             
+            # 只保留 1080P (80)，排除 1080P60 (116) 等其他高帧率格式
+            high_quality_only = [q for q in accept_quality if q == 80]
+            if not high_quality_only:
+                # 如果没有 1080P，保留最高清晰度
+                high_quality_only = [max(accept_quality)] if accept_quality else [64]
+            
+            print(f"injahow 支持的清晰度: {accept_quality}, 筛选后: {high_quality_only}")
+            
             # 构建格式列表
             formats = []
             direct_urls = {}
             proxy_urls = {}
             
-            for i, quality in enumerate(accept_quality):
+            for i, quality in enumerate(high_quality_only):
                 quality_info = quality_map.get(quality, {'resolution': f'{quality}p', 'label': f'清晰度 {quality}'})
                 
                 # 获取该清晰度的视频地址
                 url_response = await client.get(api_url, params={'bv': bvid, 'otype': 'url', 'q': quality}, timeout=30.0)
                 url_response.raise_for_status()
                 video_url = url_response.text.strip()
+                
+                # 尝试获取文件大小
+                filesize = 0
+                try:
+                    # B站视频需要特定的 headers
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Referer': 'https://www.bilibili.com/',
+                    }
+                    # 使用 stream 模式获取 content-length
+                    async with client.stream('GET', video_url, headers=headers, timeout=10.0, follow_redirects=True) as response:
+                        if 'content-length' in response.headers:
+                            filesize = int(response.headers['content-length'])
+                            print(f"[{quality_info['label']}] 获取到文件大小: {filesize} bytes ({filesize / 1024 / 1024:.2f} MB)")
+                        else:
+                            print(f"[{quality_info['label']}] 响应中没有 content-length")
+                except Exception as e:
+                    print(f"获取文件大小失败: {str(e)}")
                 
                 # 构建代理地址
                 from urllib.parse import quote
@@ -77,8 +103,11 @@ async def parse_bilibili_with_injahow(url: str) -> Dict[str, Any]:
                     'format_id': format_id,
                     'ext': 'mp4',
                     'resolution': quality_info['resolution'],
-                    'filesize': 0,
+                    'filesize': filesize,
                     'format_note': quality_info['label'],
+                    'media_type': 'merged',
+                    'vcodec': None,
+                    'acodec': None,
                 })
                 direct_urls[format_id] = video_url
                 proxy_urls[format_id] = proxy_url
@@ -120,10 +149,128 @@ async def parse_video(url: str = Query(..., description="视频URL")):
             print(f"检测到抖音链接，使用专用解析模块: {url}")
             return await parse_douyin_video(url)
         
-        # 暂时禁用 injahow 接口，使用 yt-dlp
-        # if is_bilibili_url(url):
-        #     print(f"检测到B站链接，使用 injahow 接口: {url}")
-        #     return await parse_bilibili_with_injahow(url)
+        # B站链接使用双源解析
+        if is_bilibili_url(url):
+            print(f"检测到B站链接，使用双源解析: {url}")
+            
+            all_formats = []
+            all_proxy_urls = {}
+            all_direct_urls = {}
+            
+            # 使用 injahow 解析
+            try:
+                injahow_data = await parse_bilibili_with_injahow(url)
+                for fmt in injahow_data.get('formats', []):
+                    all_formats.append(fmt)
+                all_proxy_urls.update(injahow_data.get('proxy_urls', {}))
+                all_direct_urls.update(injahow_data.get('direct_urls', {}))
+                
+                base_info = {
+                    'title': injahow_data.get('title'),
+                    'thumbnail': injahow_data.get('thumbnail'),
+                    'duration': injahow_data.get('duration'),
+                    'uploader': injahow_data.get('uploader'),
+                    'upload_date': injahow_data.get('upload_date'),
+                    'view_count': injahow_data.get('view_count'),
+                    'like_count': injahow_data.get('like_count'),
+                    'description': injahow_data.get('description'),
+                }
+            except Exception as e:
+                print(f"injahow 解析失败: {str(e)}")
+                base_info = {}
+            
+            # 使用 yt-dlp 解析
+            try:
+                ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    
+                    for fmt in info.get('formats', []):
+                        if fmt.get('ext') in ['mp4', 'webm', 'm4a', 'mp3', 'flv']:
+                            vcodec = fmt.get('vcodec', 'none')
+                            acodec = fmt.get('acodec', 'none')
+                            
+                            if vcodec == 'none' and acodec != 'none':
+                                media_type = 'audio'
+                                resolution = '音频'
+                            elif vcodec != 'none' and acodec == 'none':
+                                media_type = 'video'
+                                resolution = fmt.get('resolution', 'unknown')
+                            else:
+                                media_type = 'merged'
+                                resolution = fmt.get('resolution', 'unknown')
+                            
+                            filesize = fmt.get('filesize') or fmt.get('filesize_approx') or 0
+                            
+                            format_note = fmt.get('format_note', '')
+                            if not format_note and vcodec != 'none':
+                                if 'avc' in vcodec.lower():
+                                    format_note = 'H.264'
+                                elif 'hev' in vcodec.lower() or 'h265' in vcodec.lower():
+                                    format_note = 'H.265'
+                                elif 'vp9' in vcodec.lower():
+                                    format_note = 'VP9'
+                                elif 'av01' in vcodec.lower():
+                                    format_note = 'AV1'
+                            
+                            all_formats.append({
+                                'format_id': fmt.get('format_id'),
+                                'ext': fmt.get('ext'),
+                                'resolution': resolution,
+                                'filesize': filesize,
+                                'format_note': format_note,
+                                'vcodec': vcodec if vcodec != 'none' else None,
+                                'acodec': acodec if acodec != 'none' else None,
+                                'media_type': media_type,
+                            })
+                            
+                            # 构建代理URL
+                            video_url = fmt.get('url', '')
+                            from urllib.parse import quote
+                            all_proxy_urls[fmt.get('format_id')] = f"http://localhost:8000/api/proxy-video?url={quote(video_url, safe='')}"
+                            all_direct_urls[fmt.get('format_id')] = video_url
+                    
+                    if not base_info:
+                        base_info = {
+                            'title': info.get('title'),
+                            'thumbnail': info.get('thumbnail'),
+                            'duration': info.get('duration'),
+                            'uploader': info.get('uploader'),
+                            'upload_date': info.get('upload_date'),
+                            'view_count': info.get('view_count'),
+                            'like_count': info.get('like_count'),
+                            'description': info.get('description'),
+                        }
+            except Exception as e:
+                print(f"yt-dlp 解析失败: {str(e)}")
+            
+            # 排序格式：纯音频 -> 纯视频 -> 音视频合并（injahow 的源排在最后）
+            def sort_key(f):
+                # 类型排序：音频(2) -> 视频(1) -> 合并(0)，反转后就是 音频 -> 视频 -> 合并
+                type_order = {'audio': 0, 'video': 1, 'merged': 2}
+                
+                # 在同类型中，injahow 的源排在最后（通过检查 format_id 是否为纯数字）
+                is_injahow = f.get('format_id', '').isdigit()
+                source_order = 1 if is_injahow else 0
+                
+                res = f['resolution']
+                if res == '音频':
+                    res_num = 0
+                elif 'x' in res:
+                    res_num = int(res.split('x')[1])
+                else:
+                    res_num = 0
+                return (type_order.get(f['media_type'], 3), -res_num, source_order)
+            
+            all_formats.sort(key=sort_key)
+            
+            return {
+                **base_info,
+                'formats': all_formats,
+                'proxy_urls': all_proxy_urls,
+                'direct_urls': all_direct_urls,
+                'subtitles': [],
+            }
         
         # 其他平台使用yt-dlp
         print(f"使用yt-dlp解析: {url}")
@@ -136,23 +283,64 @@ async def parse_video(url: str = Query(..., description="视频URL")):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
-            # 提取可用的格式，按分辨率去重
+            # 提取可用的格式（不去重，显示所有）
             formats = []
-            seen_resolutions = set()
             for fmt in info.get('formats', []):
-                if fmt.get('ext') in ['mp4', 'webm', 'm4a', 'mp3']:
-                    resolution = fmt.get('resolution', 'audio only')
-                    # 跳过重复的分辨率
-                    if resolution in seen_resolutions:
-                        continue
-                    seen_resolutions.add(resolution)
+                if fmt.get('ext') in ['mp4', 'webm', 'm4a', 'mp3', 'flv']:
+                    vcodec = fmt.get('vcodec', 'none')
+                    acodec = fmt.get('acodec', 'none')
+                    
+                    # 判断音视频类型
+                    if vcodec == 'none' and acodec != 'none':
+                        media_type = 'audio'
+                        resolution = '音频'
+                    elif vcodec != 'none' and acodec == 'none':
+                        media_type = 'video'
+                        resolution = fmt.get('resolution', 'unknown')
+                    else:
+                        media_type = 'merged'
+                        resolution = fmt.get('resolution', 'unknown')
+                    
+                    # 获取文件大小
+                    filesize = fmt.get('filesize') or fmt.get('filesize_approx') or 0
+                    
+                    # 生成格式说明
+                    format_note = fmt.get('format_note', '')
+                    if not format_note and vcodec != 'none':
+                        # 根据编码生成说明
+                        if 'avc' in vcodec.lower():
+                            format_note = 'H.264'
+                        elif 'hev' in vcodec.lower() or 'h265' in vcodec.lower():
+                            format_note = 'H.265'
+                        elif 'vp9' in vcodec.lower():
+                            format_note = 'VP9'
+                        elif 'av01' in vcodec.lower():
+                            format_note = 'AV1'
+                    
                     formats.append({
                         'format_id': fmt.get('format_id'),
                         'ext': fmt.get('ext'),
                         'resolution': resolution,
-                        'filesize': fmt.get('filesize', 0),
-                        'format_note': fmt.get('format_note', ''),
+                        'filesize': filesize,
+                        'format_note': format_note,
+                        'vcodec': vcodec if vcodec != 'none' else None,
+                        'acodec': acodec if acodec != 'none' else None,
+                        'media_type': media_type,
                     })
+            
+            # 排序：合并的 > 纯视频 > 纯音频，同类型按分辨率从高到低
+            def sort_key(f):
+                type_order = {'merged': 0, 'video': 1, 'audio': 2}
+                res = f['resolution']
+                if res == '音频':
+                    res_num = 0
+                elif 'x' in res:
+                    res_num = int(res.split('x')[1])
+                else:
+                    res_num = 0
+                return (type_order.get(f['media_type'], 3), -res_num)
+            
+            formats.sort(key=sort_key)
             
             # 提取字幕信息
             subtitles = []
@@ -186,7 +374,8 @@ async def parse_video(url: str = Query(..., description="视频URL")):
 @app.get("/api/get-direct-link")
 async def get_direct_link(
     url: str = Query(..., description="视频URL"),
-    format_id: str = Query(..., description="格式ID")
+    format_id: str = Query(..., description="格式ID"),
+    source: str = Query("auto", description="解析源: auto, injahow, ytdlp")
 ):
     try:
         # 如果是抖音链接，使用专用解析模块
@@ -202,18 +391,29 @@ async def get_direct_link(
                 'filesize': 0,
             }
         
-        # 暂时禁用 injahow 接口
-        # if is_bilibili_url(url):
-        #     print(f"检测到B站链接，获取直链: {url}, format_id: {format_id}")
-        #     bilibili_data = await parse_bilibili_with_injahow(url)
-        #     # 根据 format_id 获取对应的清晰度 URL
-        #     proxy_urls = bilibili_data.get('proxy_urls', {})
-        #     direct_link = proxy_urls.get(format_id, bilibili_data.get('direct_url', ''))
-        #     return {
-        #         'direct_link': direct_link,
-        #         'ext': 'mp4',
-        #         'filesize': 0,
-        #     }
+        # B站链接支持多解析源
+        if is_bilibili_url(url):
+            print(f"检测到B站链接，获取直链，解析源: {source}, URL: {url}")
+            
+            # 如果指定了 injahow 源，或者自动模式下优先使用 injahow
+            if source == "injahow" or source == "auto":
+                try:
+                    bilibili_data = await parse_bilibili_with_injahow(url)
+                    # 根据 format_id 获取对应的清晰度 URL
+                    proxy_urls = bilibili_data.get('proxy_urls', {})
+                    direct_link = proxy_urls.get(format_id, bilibili_data.get('direct_url', ''))
+                    return {
+                        'direct_link': direct_link,
+                        'ext': 'mp4',
+                        'filesize': 0,
+                    }
+                except Exception as e:
+                    print(f"injahow 获取直链失败，回退到 yt-dlp: {str(e)}")
+                    if source == "injahow":
+                        raise
+            
+            # 使用 yt-dlp 获取直链
+            print(f"使用 yt-dlp 获取B站直链: {url}")
         
         # 其他平台使用yt-dlp
         ydl_opts = {
@@ -278,24 +478,24 @@ async def download_video(
                 'format_id': format_id,
             }
         
-        # 暂时禁用 injahow 接口
-        # if is_bilibili_url(url):
-        #     print(f"检测到B站链接，准备下载: {url}, format_id: {format_id}")
-        #     bilibili_data = await parse_bilibili_with_injahow(url)
-        #     # 根据 format_id 获取对应的清晰度 URL
-        #     direct_urls = bilibili_data.get('direct_urls', {})
-        #     direct_link = direct_urls.get(format_id, bilibili_data.get('direct_url', ''))
-        #     # 获取格式信息
-        #     formats = bilibili_data.get('formats', [])
-        #     selected_format = next((f for f in formats if f['format_id'] == format_id), None)
-        #     format_note = selected_format['format_note'] if selected_format else '未知清晰度'
-        #     return {
-        #         'title': f"{bilibili_data.get('title', '未知标题')}_{format_note}",
-        #         'direct_link': direct_link,
-        #         'ext': 'mp4',
-        #         'filesize': 0,
-        #         'format_id': format_id,
-        #     }
+        # B站链接使用 injahow 接口
+        if is_bilibili_url(url):
+            print(f"检测到B站链接，准备下载: {url}, format_id: {format_id}")
+            bilibili_data = await parse_bilibili_with_injahow(url)
+            # 根据 format_id 获取对应的清晰度 URL
+            direct_urls = bilibili_data.get('direct_urls', {})
+            direct_link = direct_urls.get(format_id, bilibili_data.get('direct_url', ''))
+            # 获取格式信息
+            formats = bilibili_data.get('formats', [])
+            selected_format = next((f for f in formats if f['format_id'] == format_id), None)
+            format_note = selected_format['format_note'] if selected_format else '未知清晰度'
+            return {
+                'title': f"{bilibili_data.get('title', '未知标题')}_{format_note}",
+                'direct_link': direct_link,
+                'ext': 'mp4',
+                'filesize': 0,
+                'format_id': format_id,
+            }
         
         # 其他平台使用yt-dlp
         ydl_opts = {
