@@ -95,12 +95,11 @@
                   @click="playVideo"
                 >
                   <img 
-                    :src="videoInfo.thumbnail" 
+                    :src="getProxyImageUrl(videoInfo.thumbnail)" 
                     :alt="videoInfo.title"
                     loading="eager"
                     decoding="async"
                     class="w-full h-auto object-cover transition-opacity duration-300 group-hover:opacity-70"
-                    @error="$event.target.src = getProxyImageUrl(videoInfo.thumbnail)"
                   />
                   <div class="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/70 to-transparent group-hover:from-black/80 transition-all duration-300">
                     <div class="transform transition-all duration-300 group-hover:scale-110">

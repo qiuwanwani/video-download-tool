@@ -537,8 +537,17 @@ async def proxy_image(
     url: str = Query(..., description="图片URL")
 ):
     try:
+        # 根据URL设置不同的headers
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        }
+        
+        # B站图片需要Referer
+        if 'bilibili.com' in url or 'hdslb.com' in url:
+            headers['Referer'] = 'https://www.bilibili.com/'
+        
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, follow_redirects=True)
+            response = await client.get(url, headers=headers, follow_redirects=True, timeout=10.0)
             response.raise_for_status()
             
             # 提取Content-Type
@@ -547,6 +556,7 @@ async def proxy_image(
             from fastapi.responses import Response
             return Response(content=response.content, media_type=content_type)
     except Exception as e:
+        print(f"图片代理失败: {str(e)}, URL: {url}")
         raise HTTPException(status_code=400, detail=f"图片代理失败: {str(e)}")
 
 
