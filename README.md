@@ -241,11 +241,7 @@ AI_API_KEY=your-api-key
 
 ## 许可证
 
-MIT License
-
-## 作者
-
-TX
+[MIT License](LICENSE) - Copyright (c) 2026 秋晚晚吖
 
 ## 更新日志
 
