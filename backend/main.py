@@ -6,6 +6,7 @@ import os
 import httpx
 from typing import Dict, Any, List
 from dotenv import load_dotenv
+import time
 
 # 加载环境变量
 load_dotenv()
@@ -18,6 +19,29 @@ import re
 AI_API_URL = os.getenv('AI_API_URL', '')
 AI_MODEL = os.getenv('AI_MODEL', '')
 AI_API_KEY = os.getenv('AI_API_KEY', '')
+
+# 简单的内存缓存（URL -> {data, timestamp}）
+_parse_cache: Dict[str, Dict] = {}
+CACHE_TTL = 300  # 缓存5分钟
+
+def get_cached_parse(url: str) -> Dict[str, Any]:
+    """获取缓存的解析结果"""
+    if url in _parse_cache:
+        cache_entry = _parse_cache[url]
+        if time.time() - cache_entry['timestamp'] < CACHE_TTL:
+            print(f"使用缓存的解析结果: {url}")
+            return cache_entry['data']
+        else:
+            # 缓存过期，删除
+            del _parse_cache[url]
+    return None
+
+def set_cached_parse(url: str, data: Dict[str, Any]):
+    """设置缓存的解析结果"""
+    _parse_cache[url] = {
+        'data': data,
+        'timestamp': time.time()
+    }
 
 def is_bilibili_url(url: str) -> bool:
     """判断是否为B站链接"""
@@ -153,27 +177,61 @@ app.add_middleware(
 @app.get("/api/parse")
 async def parse_video(url: str = Query(..., description="视频URL")):
     try:
+        # 检查缓存
+        cached_result = get_cached_parse(url)
+        if cached_result:
+            return cached_result
+        
         # 如果是抖音链接，使用专用解析模块
         if is_douyin_url(url):
             print(f"检测到抖音链接，使用专用解析模块: {url}")
-            return await parse_douyin_video(url)
+            result = await parse_douyin_video(url)
+            set_cached_parse(url, result)
+            return result
         
-        # B站链接使用双源解析
+        # B站链接使用双源并发解析
         if is_bilibili_url(url):
-            print(f"检测到B站链接，使用双源解析: {url}")
+            print(f"检测到B站链接，使用双源并发解析: {url}")
             
             all_formats = []
             all_proxy_urls = {}
             all_direct_urls = {}
+            base_info = {}
             
-            # 使用 injahow 解析
-            try:
-                injahow_data = await parse_bilibili_with_injahow(url)
+            # 并发执行两个解析任务
+            async def parse_with_injahow():
+                try:
+                    return await parse_bilibili_with_injahow(url)
+                except Exception as e:
+                    print(f"injahow 解析失败: {str(e)}")
+                    return None
+            
+            def parse_with_ytdlp():
+                try:
+                    ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        return ydl.extract_info(url, download=False)
+                except Exception as e:
+                    print(f"yt-dlp 解析失败: {str(e)}")
+                    return None
+            
+            # 并发执行（yt-dlp 是同步的，用 asyncio.to_thread 包装）
+            import asyncio
+            injahow_task = parse_with_injahow()
+            ytdlp_task = asyncio.to_thread(parse_with_ytdlp)
+            
+            injahow_data, ytdlp_info = await asyncio.gather(
+                injahow_task, 
+                ytdlp_task,
+                return_exceptions=True
+            )
+            
+            # 处理 injahow 结果
+            if injahow_data and not isinstance(injahow_data, Exception):
                 for fmt in injahow_data.get('formats', []):
                     all_formats.append(fmt)
                 all_proxy_urls.update(injahow_data.get('proxy_urls', {}))
                 all_direct_urls.update(injahow_data.get('direct_urls', {}))
-                
                 base_info = {
                     'title': injahow_data.get('title'),
                     'thumbnail': injahow_data.get('thumbnail'),
@@ -184,74 +242,67 @@ async def parse_video(url: str = Query(..., description="视频URL")):
                     'like_count': injahow_data.get('like_count'),
                     'description': injahow_data.get('description'),
                 }
-            except Exception as e:
-                print(f"injahow 解析失败: {str(e)}")
-                base_info = {}
             
-            # 使用 yt-dlp 解析
-            try:
-                ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    
-                    for fmt in info.get('formats', []):
-                        if fmt.get('ext') in ['mp4', 'webm', 'm4a', 'mp3', 'flv']:
-                            vcodec = fmt.get('vcodec', 'none')
-                            acodec = fmt.get('acodec', 'none')
-                            
-                            if vcodec == 'none' and acodec != 'none':
-                                media_type = 'audio'
-                                resolution = '音频'
-                            elif vcodec != 'none' and acodec == 'none':
-                                media_type = 'video'
-                                resolution = fmt.get('resolution', 'unknown')
-                            else:
-                                media_type = 'merged'
-                                resolution = fmt.get('resolution', 'unknown')
-                            
-                            filesize = fmt.get('filesize') or fmt.get('filesize_approx') or 0
-                            
-                            format_note = fmt.get('format_note', '')
-                            if not format_note and vcodec != 'none':
-                                if 'avc' in vcodec.lower():
-                                    format_note = 'H.264'
-                                elif 'hev' in vcodec.lower() or 'h265' in vcodec.lower():
-                                    format_note = 'H.265'
-                                elif 'vp9' in vcodec.lower():
-                                    format_note = 'VP9'
-                                elif 'av01' in vcodec.lower():
-                                    format_note = 'AV1'
-                            
-                            all_formats.append({
-                                'format_id': fmt.get('format_id'),
-                                'ext': fmt.get('ext'),
-                                'resolution': resolution,
-                                'filesize': filesize,
-                                'format_note': format_note,
-                                'vcodec': vcodec if vcodec != 'none' else None,
-                                'acodec': acodec if acodec != 'none' else None,
-                                'media_type': media_type,
-                            })
-                            
-                            # 构建代理URL
-                            video_url = fmt.get('url', '')
-                            from urllib.parse import quote
-                            all_proxy_urls[fmt.get('format_id')] = f"http://localhost:8000/api/proxy-video?url={quote(video_url, safe='')}"
-                            all_direct_urls[fmt.get('format_id')] = video_url
-                    
-                    if not base_info:
-                        base_info = {
-                            'title': info.get('title'),
-                            'thumbnail': info.get('thumbnail'),
-                            'duration': info.get('duration'),
-                            'uploader': info.get('uploader'),
-                            'upload_date': info.get('upload_date'),
-                            'view_count': info.get('view_count'),
-                            'like_count': info.get('like_count'),
-                            'description': info.get('description'),
-                        }
-            except Exception as e:
-                print(f"yt-dlp 解析失败: {str(e)}")
+            # 处理 yt-dlp 结果
+            if ytdlp_info and not isinstance(ytdlp_info, Exception):
+                info = ytdlp_info
+                for fmt in info.get('formats', []):
+                    if fmt.get('ext') in ['mp4', 'webm', 'm4a', 'mp3', 'flv']:
+                        vcodec = fmt.get('vcodec', 'none')
+                        acodec = fmt.get('acodec', 'none')
+                        
+                        if vcodec == 'none' and acodec != 'none':
+                            media_type = 'audio'
+                            resolution = '音频'
+                        elif vcodec != 'none' and acodec == 'none':
+                            media_type = 'video'
+                            resolution = fmt.get('resolution', 'unknown')
+                        else:
+                            media_type = 'merged'
+                            resolution = fmt.get('resolution', 'unknown')
+                        
+                        filesize = fmt.get('filesize') or fmt.get('filesize_approx') or 0
+                        
+                        format_note = fmt.get('format_note', '')
+                        if not format_note and vcodec != 'none':
+                            if 'avc' in vcodec.lower():
+                                format_note = 'H.264'
+                            elif 'hev' in vcodec.lower() or 'h265' in vcodec.lower():
+                                format_note = 'H.265'
+                            elif 'vp9' in vcodec.lower():
+                                format_note = 'VP9'
+                            elif 'av01' in vcodec.lower():
+                                format_note = 'AV1'
+                        
+                        all_formats.append({
+                            'format_id': fmt.get('format_id'),
+                            'ext': fmt.get('ext'),
+                            'resolution': resolution,
+                            'filesize': filesize,
+                            'format_note': format_note,
+                            'vcodec': vcodec if vcodec != 'none' else None,
+                            'acodec': acodec if acodec != 'none' else None,
+                            'media_type': media_type,
+                        })
+                        
+                        # 构建代理URL
+                        video_url = fmt.get('url', '')
+                        from urllib.parse import quote
+                        all_proxy_urls[fmt.get('format_id')] = f"http://localhost:8000/api/proxy-video?url={quote(video_url, safe='')}"
+                        all_direct_urls[fmt.get('format_id')] = video_url
+                
+                # 如果 injahow 没有获取到基本信息，使用 yt-dlp 的
+                if not base_info:
+                    base_info = {
+                        'title': info.get('title'),
+                        'thumbnail': info.get('thumbnail'),
+                        'duration': info.get('duration'),
+                        'uploader': info.get('uploader'),
+                        'upload_date': info.get('upload_date'),
+                        'view_count': info.get('view_count'),
+                        'like_count': info.get('like_count'),
+                        'description': info.get('description'),
+                    }
             
             # 排序格式：纯音频 -> 纯视频 -> 音视频合并（injahow 的源排在最后）
             def sort_key(f):
@@ -273,20 +324,37 @@ async def parse_video(url: str = Query(..., description="视频URL")):
             
             all_formats.sort(key=sort_key)
             
-            return {
+            result = {
                 **base_info,
                 'formats': all_formats,
                 'proxy_urls': all_proxy_urls,
                 'direct_urls': all_direct_urls,
                 'subtitles': [],
             }
+            
+            # 缓存结果
+            set_cached_parse(url, result)
+            return result
         
-        # 其他平台使用yt-dlp
+        # 其他平台使用yt-dlp（优化配置加速解析）
         print(f"使用yt-dlp解析: {url}")
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
             'skip_download': True,
+            # 加速选项
+            'extract_flat': False,  # 提取完整信息
+            'playlist_items': '1',  # 只解析第一个（如果是播放列表）
+            'socket_timeout': 10,   # 减少超时时间
+            'retries': 2,           # 减少重试次数
+            'fragment_retries': 2,
+            'file_access_retries': 2,
+            # 跳过不需要的数据
+            'writeinfojson': False,
+            'writedescription': False,
+            'writethumbnail': False,
+            'writesubtitles': False,
+            'writeautomaticsub': False,
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -362,7 +430,7 @@ async def parse_video(url: str = Query(..., description="视频URL")):
                             'ext': sub.get('ext'),
                         })
             
-            return {
+            result = {
                 'title': info.get('title'),
                 'thumbnail': info.get('thumbnail'),
                 'duration': info.get('duration'),
@@ -374,6 +442,10 @@ async def parse_video(url: str = Query(..., description="视频URL")):
                 'formats': formats,
                 'subtitles': subtitles,
             }
+            
+            # 缓存结果
+            set_cached_parse(url, result)
+            return result
     except Exception as e:
         print(f"解析视频失败: {str(e)}")
         raise HTTPException(status_code=400, detail=f"解析视频失败: {str(e)}")
