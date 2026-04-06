@@ -56,3 +56,12 @@ cookies.txt
 
 # Trae IDE
 .trae/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Backend environment
+backend/.env
+backend/.env.local

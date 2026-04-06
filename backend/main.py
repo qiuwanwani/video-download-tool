@@ -5,10 +5,19 @@ import json
 import os
 import httpx
 from typing import Dict, Any, List
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 # 导入抖音解析模块
 from douyin_parser import is_douyin_url, parse_douyin_video
 import re
+
+# 从环境变量读取AI配置
+AI_API_URL = os.getenv('AI_API_URL', '')
+AI_MODEL = os.getenv('AI_MODEL', '')
+AI_API_KEY = os.getenv('AI_API_KEY', '')
 
 def is_bilibili_url(url: str) -> bool:
     """判断是否为B站链接"""
@@ -649,6 +658,711 @@ async def proxy_video(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=400, detail=f"视频播放失败: {str(e)}")
+
+
+# B站热门视频接口
+@app.get("/api/bilibili/hot")
+async def get_bilibili_hot():
+    """获取B站热门视频列表"""
+    try:
+        async with httpx.AsyncClient() as client:
+            # 使用B站官方热门API
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://www.bilibili.com/'
+            }
+            
+            # 获取热门视频列表
+            response = await client.get(
+                'https://api.bilibili.com/x/web-interface/popular',
+                headers=headers,
+                params={'ps': 12},  # 获取12个视频
+                timeout=10.0
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get('code') != 0:
+                raise Exception(f"B站API返回错误: {data.get('message', '未知错误')}")
+            
+            videos = data.get('data', {}).get('list', [])
+            
+            # 格式化视频数据
+            formatted_videos = []
+            for video in videos:
+                formatted_videos.append({
+                    'bvid': video.get('bvid'),
+                    'title': video.get('title'),
+                    'pic': video.get('pic', ''),
+                    'link': f"https://www.bilibili.com/video/{video.get('bvid')}",
+                    'owner': {
+                        'name': video.get('owner', {}).get('name', '未知UP主')
+                    },
+                    'stat': {
+                        'view': video.get('stat', {}).get('view', 0),
+                        'like': video.get('stat', {}).get('like', 0)
+                    }
+                })
+            
+            return {'videos': formatted_videos}
+            
+    except Exception as e:
+        print(f"获取B站热门视频失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=f"获取B站热门视频失败: {str(e)}")
+
+
+# 字幕获取接口 - 双方案实现
+@app.post("/api/bilibili/subtitles")
+async def get_bilibili_subtitles(request: dict):
+    """
+    获取B站视频字幕
+    方案1: 使用B站官方API获取字幕
+    方案2: 使用yt-dlp提取字幕
+    """
+    url = request.get('url', '')
+    if not url:
+        raise HTTPException(status_code=400, detail="请提供视频URL")
+    
+    # 方案1: 使用B站官方API获取字幕
+    try:
+        subtitles = await get_bilibili_subtitles_from_api(url)
+        if subtitles and len(subtitles) > 0:
+            return {'subtitles': subtitles, 'source': 'api'}
+    except Exception as e:
+        print(f"方案1(B站API)获取字幕失败: {str(e)}")
+    
+    # 方案2: 使用yt-dlp提取字幕
+    try:
+        subtitles = await get_bilibili_subtitles_from_ytdlp(url)
+        if subtitles and len(subtitles) > 0:
+            return {'subtitles': subtitles, 'source': 'ytdlp'}
+    except Exception as e:
+        print(f"方案2(yt-dlp)获取字幕失败: {str(e)}")
+    
+    # 如果两种方案都失败，返回空字幕
+    return {'subtitles': [], 'source': 'none', 'message': '无法获取字幕，该视频可能没有字幕'}
+
+
+async def get_bilibili_subtitles_from_api(url: str) -> list:
+    """方案1: 使用B站 dm/view API 获取字幕"""
+    async with httpx.AsyncClient() as client:
+        # 获取视频BV号
+        bvid = extract_bvid_from_url(url)
+        if not bvid:
+            raise Exception("无法提取BV号")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': f'https://www.bilibili.com/video/{bvid}'
+        }
+        
+        # 获取视频详情和cid
+        video_info_response = await client.get(
+            f'https://api.bilibili.com/x/web-interface/view',
+            params={'bvid': bvid},
+            headers=headers,
+            timeout=10.0
+        )
+        video_info_response.raise_for_status()
+        video_info = video_info_response.json()
+        
+        if video_info.get('code') != 0:
+            raise Exception(f"获取视频信息失败: {video_info.get('message', '未知错误')}")
+        
+        cid = video_info['data']['cid']
+        aid = video_info['data']['aid']
+        
+        # 使用 dm/view API 获取字幕列表（这个API不需要登录）
+        dm_response = await client.get(
+            f'https://api.bilibili.com/x/v2/dm/view',
+            params={'aid': aid, 'oid': cid, 'type': 1},
+            headers=headers,
+            timeout=10.0
+        )
+        dm_response.raise_for_status()
+        dm_data = dm_response.json()
+        
+        if dm_data.get('code') != 0:
+            raise Exception(f"获取字幕列表失败: {dm_data.get('message', '未知错误')}")
+        
+        # 获取字幕URL
+        subtitles_list = dm_data['data'].get('subtitle', {}).get('subtitles', [])
+        if not subtitles_list:
+            raise Exception("该视频没有字幕")
+        
+        # 优先选择中文人工字幕，其次是中文AI字幕
+        best_subtitle = subtitles_list[0]
+        for sub in subtitles_list:
+            lang = sub.get('lan', '')
+            if lang in ['zh', 'zh-Hans', 'zh-CN']:
+                best_subtitle = sub
+                break
+        
+        subtitle_url = best_subtitle.get('subtitle_url', '')
+        if not subtitle_url:
+            raise Exception("字幕URL为空")
+        
+        # 添加https协议头
+        if subtitle_url.startswith('//'):
+            subtitle_url = 'https:' + subtitle_url
+        if subtitle_url.startswith('http://'):
+            subtitle_url = 'https://' + subtitle_url[7:]
+        
+        # 下载字幕内容
+        subtitle_content_response = await client.get(subtitle_url, headers=headers, timeout=10.0)
+        subtitle_content_response.raise_for_status()
+        subtitle_content = subtitle_content_response.json()
+        
+        # 解析字幕
+        subtitles = []
+        for item in subtitle_content.get('body', []):
+            content = item.get('content', '').strip()
+            if content:
+                subtitles.append({
+                    'time': format_time(item.get('from', 0)),
+                    'text': content
+                })
+        
+        return subtitles
+
+
+async def get_bilibili_subtitles_from_ytdlp(url: str) -> list:
+    """方案2: 使用yt-dlp提取字幕"""
+    import yt_dlp
+    
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'skip_download': True,
+        'writesubtitles': True,
+        'writeautomaticsub': True,
+        'subtitleslangs': ['zh-CN', 'zh', 'en'],
+    }
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        
+        # 检查是否有字幕
+        subtitles = info.get('subtitles', {})
+        automatic_captions = info.get('automatic_captions', {})
+        
+        # 优先使用人工字幕
+        subtitle_data = None
+        for lang in ['zh-CN', 'zh', 'en']:
+            if lang in subtitles and subtitles[lang]:
+                subtitle_data = subtitles[lang][0]
+                break
+        
+        # 如果没有人工字幕，使用自动字幕
+        if not subtitle_data:
+            for lang in ['zh-CN', 'zh', 'en']:
+                if lang in automatic_captions and automatic_captions[lang]:
+                    subtitle_data = automatic_captions[lang][0]
+                    break
+        
+        if not subtitle_data:
+            raise Exception("没有找到字幕")
+        
+        # 下载字幕内容
+        subtitle_url = subtitle_data.get('url', '')
+        if not subtitle_url:
+            raise Exception("字幕URL为空")
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(subtitle_url, timeout=10.0)
+            response.raise_for_status()
+            
+            # 解析SRT或JSON格式字幕
+            content = response.text
+            subtitles = parse_subtitle_content(content)
+            
+            return subtitles
+
+
+def extract_bvid_from_url(url: str) -> str:
+    """从URL中提取BV号"""
+    import re
+    patterns = [
+        r'BV([a-zA-Z0-9]+)',
+        r'bvid=([a-zA-Z0-9]+)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url, re.IGNORECASE)
+        if match:
+            bvid = match.group(1)
+            if not bvid.startswith('BV'):
+                bvid = 'BV' + bvid
+            return bvid
+    return ''
+
+
+def format_time(seconds: float) -> str:
+    """将秒数格式化为时间字符串 MM:SS"""
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def parse_subtitle_content(content: str) -> list:
+    """解析字幕内容，支持SRT和JSON格式"""
+    subtitles = []
+    
+    # 尝试解析JSON格式
+    try:
+        data = json.loads(content)
+        if isinstance(data, dict) and 'body' in data:
+            for item in data['body']:
+                subtitles.append({
+                    'time': format_time(item.get('from', 0)),
+                    'text': item.get('content', '')
+                })
+            return subtitles
+    except:
+        pass
+    
+    # 解析SRT格式
+    import re
+    pattern = r'(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.*?)(?=\n\d+\n|\Z)'
+    matches = re.findall(pattern, content, re.DOTALL)
+    
+    for match in matches:
+        start_time = match[0]
+        text = match[2].strip().replace('\n', ' ')
+        # 转换为MM:SS格式
+        time_parts = start_time.split(':')
+        minutes = int(time_parts[1])
+        secs = int(time_parts[2].split(',')[0])
+        subtitles.append({
+            'time': f"{minutes:02d}:{secs:02d}",
+            'text': text
+        })
+    
+    return subtitles
+
+
+@app.post("/api/bilibili/ai/summary")
+async def generate_ai_summary(request: dict):
+    """
+    使用AI大模型生成视频总结摘要
+    """
+    url = request.get('url', '')
+    if not url:
+        raise HTTPException(status_code=400, detail="请提供视频URL")
+    
+    # 检查AI配置
+    if not AI_API_KEY:
+        return {
+            'summary': 'AI服务未配置，请联系管理员设置AI_API_KEY环境变量。',
+            'source': 'error'
+        }
+    
+    try:
+        # 1. 获取视频字幕
+        subtitles = await get_bilibili_subtitles_from_api(url)
+        
+        if not subtitles or len(subtitles) == 0:
+            # 尝试使用yt-dlp获取字幕
+            subtitles = await get_bilibili_subtitles_from_ytdlp(url)
+        
+        if not subtitles or len(subtitles) == 0:
+            return {
+                'summary': '该视频没有字幕，无法生成摘要。',
+                'source': 'none'
+            }
+        
+        # 2. 构建字幕文本（根据实际字幕内容）
+        subtitle_lines = []
+        for sub in subtitles[:200]:  # 限制前200条字幕
+            time_str = sub.get('time', '00:00')
+            text_str = sub.get('text', '').strip()
+            if text_str:
+                subtitle_lines.append(f"[{time_str}] {text_str}")
+        
+        subtitle_text = "\n".join(subtitle_lines)
+        
+        # 3. 调用AI大模型生成摘要
+        async with httpx.AsyncClient() as client:
+            # 根据实际字幕内容构建提示词
+            prompt = f"""请根据以下视频字幕内容，生成一个简洁的视频总结摘要（200-300字）。
+
+【视频字幕内容】
+{subtitle_text}
+
+【分析要求】
+请基于上述字幕内容，总结以下要点：
+1. 视频主题和核心内容（根据字幕中提到的主题）
+2. 主要观点或关键信息（从字幕中提取的重要观点）
+3. 适合什么观众观看（根据内容判断目标受众）
+
+【输出要求】
+- 直接输出摘要内容，不要输出思考过程
+- 语言简洁明了，用中文回答
+- 字数控制在200-300字
+
+请生成摘要："""
+
+            headers = {
+                'Authorization': f'Bearer {AI_API_KEY}',
+                'Content-Type': 'application/json'
+            }
+            
+            payload = {
+                'model': AI_MODEL,
+                'messages': [
+                    {'role': 'system', 'content': '你是一个专业的视频内容分析助手。请直接输出最终答案，不要输出思考过程。'},
+                    {'role': 'user', 'content': prompt}
+                ],
+                'temperature': 0.3,
+                'max_tokens': 800
+            }
+            
+            response = await client.post(
+                AI_API_URL,
+                headers=headers,
+                json=payload,
+                timeout=60.0
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            # 提取AI生成的摘要
+            if 'choices' in result and len(result['choices']) > 0:
+                choice = result['choices'][0]
+                message = choice.get('message', {})
+                
+                # 优先使用 content，如果没有则使用 reasoning_content
+                if 'content' in message and message['content']:
+                    summary = message['content']
+                elif 'reasoning_content' in message and message['reasoning_content']:
+                    summary = message['reasoning_content']
+                else:
+                    summary = f"AI响应格式异常: {json.dumps(message, ensure_ascii=False)[:200]}"
+                
+                # 清理思考过程，提取最终答案
+                # 如果包含"摘要："或"最终摘要："，提取后面的内容
+                import re
+                patterns = [
+                    r'(?:最终)?摘要[：:]\s*([\s\S]+)$',
+                    r'(?:视频)?总结[：:]\s*([\s\S]+)$',
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, summary)
+                    if match:
+                        summary = match.group(1).strip()
+                        break
+                
+                # 如果内容太长，截取前1000字符
+                if len(summary) > 1000:
+                    summary = summary[:997] + "..."
+            else:
+                summary = f"AI响应格式异常: {json.dumps(result, ensure_ascii=False)[:200]}"
+            
+            return {
+                'summary': summary,
+                'source': 'ai',
+                'subtitle_count': len(subtitles)
+            }
+            
+    except Exception as e:
+        print(f"AI生成摘要失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # 返回友好的错误信息
+        return {
+            'summary': f'生成摘要时出错: {str(e)}',
+            'source': 'error'
+        }
+
+
+@app.post("/api/bilibili/ai/mindmap")
+async def generate_ai_mindmap(request: dict):
+    """
+    使用AI大模型生成视频思维导图
+    """
+    url = request.get('url', '')
+    if not url:
+        raise HTTPException(status_code=400, detail="请提供视频URL")
+    
+    # 检查AI配置
+    if not AI_API_KEY:
+        return {
+            'mindmap': 'AI服务未配置，请联系管理员设置AI_API_KEY环境变量。',
+            'source': 'error'
+        }
+    
+    try:
+        # 1. 获取视频字幕
+        subtitles = await get_bilibili_subtitles_from_api(url)
+        
+        if not subtitles or len(subtitles) == 0:
+            subtitles = await get_bilibili_subtitles_from_ytdlp(url)
+        
+        if not subtitles or len(subtitles) == 0:
+            return {
+                'mindmap': '',
+                'source': 'none',
+                'message': '该视频没有字幕，无法生成思维导图。'
+            }
+        
+        # 2. 构建字幕文本
+        subtitle_lines = []
+        for sub in subtitles[:300]:  # 限制前300条字幕
+            time_str = sub.get('time', '00:00')
+            text_str = sub.get('text', '').strip()
+            if text_str:
+                subtitle_lines.append(f"[{time_str}] {text_str}")
+        
+        subtitle_text = "\n".join(subtitle_lines)
+        
+        # 3. 调用AI大模型生成思维导图
+        async with httpx.AsyncClient() as client:
+            prompt = f"""请根据以下视频字幕内容，生成一个详细的思维导图（使用Markdown列表格式）。
+
+【视频字幕内容】
+{subtitle_text}
+
+【思维导图要求】
+请基于上述字幕内容，生成一个层次清晰的思维导图，使用Markdown列表格式（使用 - 和缩进）：
+
+1. 第一行必须是中心主题（视频的核心主题，用一句话概括）
+2. 第二行开始是主要分支（至少3-5个主要章节或要点）
+3. 每个主要分支下要有2-4个子分支（详细内容）
+
+【输出格式要求】
+必须严格按照以下格式输出：
+- 中心主题（一句话概括视频内容）
+  - 主要分支1（如：项目背景/核心功能）
+    - 子分支1.1（详细说明）
+    - 子分支1.2（详细说明）
+  - 主要分支2（如：技术实现/应用场景）
+    - 子分支2.1（详细说明）
+    - 子分支2.2（详细说明）
+  - 主要分支3（如：优势特点/未来规划）
+    - 子分支3.1（详细说明）
+    - 子分支3.2（详细说明）
+
+【重要提示】
+- 必须包含至少3个主要分支
+- 每个主要分支下必须包含至少2个子分支
+- 内容要详细，不能过于简略
+- 直接输出思维导图内容，不要输出思考过程
+
+请生成详细的思维导图："""
+
+            headers = {
+                'Authorization': f'Bearer {AI_API_KEY}',
+                'Content-Type': 'application/json'
+            }
+            
+            payload = {
+                'model': AI_MODEL,
+                'messages': [
+                    {'role': 'system', 'content': '你是一个专业的思维导图生成助手。请直接输出Markdown格式的思维导图，不要输出思考过程。'},
+                    {'role': 'user', 'content': prompt}
+                ],
+                'temperature': 0.3,
+                'max_tokens': 1500
+            }
+            
+            response = await client.post(
+                AI_API_URL,
+                headers=headers,
+                json=payload,
+                timeout=60.0
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            # 提取AI生成的思维导图
+            if 'choices' in result and len(result['choices']) > 0:
+                choice = result['choices'][0]
+                message = choice.get('message', {})
+                
+                if 'content' in message and message['content']:
+                    mindmap = message['content']
+                elif 'reasoning_content' in message and message['reasoning_content']:
+                    mindmap = message['reasoning_content']
+                else:
+                    mindmap = f"AI响应格式异常"
+                
+                # 清理思考过程，提取Markdown列表
+                import re
+                # 查找Markdown列表格式的内容（匹配整个列表）
+                lines = mindmap.split('\n')
+                list_lines = []
+                in_list = False
+                
+                for line in lines:
+                    # 检查是否是列表项（以 - 开头，前面可以有空格）
+                    if re.match(r'^(\s*)-\s+', line):
+                        list_lines.append(line)
+                        in_list = True
+                    elif in_list and line.strip() == '':
+                        # 列表结束
+                        break
+                    elif in_list:
+                        # 列表中的其他内容（如空行）也保留
+                        list_lines.append(line)
+                
+                if list_lines:
+                    mindmap = '\n'.join(list_lines).strip()
+                
+                # 如果内容太长，截取前2000字符
+                if len(mindmap) > 2000:
+                    mindmap = mindmap[:1997] + "..."
+            else:
+                mindmap = "AI响应格式异常"
+            
+            return {
+                'mindmap': mindmap,
+                'source': 'ai',
+                'subtitle_count': len(subtitles)
+            }
+            
+    except Exception as e:
+        print(f"AI生成思维导图失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        return {
+            'mindmap': f'生成思维导图时出错: {str(e)}',
+            'source': 'error'
+        }
+
+
+@app.post("/api/bilibili/ai/qa")
+async def ai_qa(request: dict):
+    """
+    AI智能问答 - 基于视频字幕回答用户问题
+    """
+    url = request.get('url', '')
+    question = request.get('question', '')
+    
+    if not url:
+        raise HTTPException(status_code=400, detail="请提供视频URL")
+    
+    if not question:
+        raise HTTPException(status_code=400, detail="请输入问题")
+    
+    # 检查AI配置
+    if not AI_API_KEY:
+        return {
+            'answer': 'AI服务未配置，请联系管理员设置AI_API_KEY环境变量。',
+            'source': 'error'
+        }
+    
+    try:
+        # 1. 获取视频字幕
+        subtitles = await get_bilibili_subtitles_from_api(url)
+        
+        if not subtitles or len(subtitles) == 0:
+            subtitles = await get_bilibili_subtitles_from_ytdlp(url)
+        
+        if not subtitles or len(subtitles) == 0:
+            return {
+                'answer': '该视频没有字幕，无法进行AI问答。',
+                'source': 'none'
+            }
+        
+        # 2. 构建字幕文本
+        subtitle_lines = []
+        for sub in subtitles[:300]:  # 限制前300条字幕
+            time_str = sub.get('time', '00:00')
+            text_str = sub.get('text', '').strip()
+            if text_str:
+                subtitle_lines.append(f"[{time_str}] {text_str}")
+        
+        subtitle_text = "\n".join(subtitle_lines)
+        
+        # 3. 调用AI大模型回答问题
+        async with httpx.AsyncClient() as client:
+            prompt = f"""你是一个专业的视频内容分析助手。请根据提供的视频字幕内容，回答用户的问题。
+
+## 视频字幕内容
+```
+{subtitle_text}
+```
+
+## 用户问题
+{question}
+
+## 判断与回答规则
+
+**第一步：判断问题类型**
+- 如果问题是关于视频内容、主题、讲解的知识点、人物、事件等 → 基于字幕回答
+- 如果问题是闲聊、问候、与视频无关的问题（如"你好""今天天气""你会什么"）→ 简短回复并引导
+
+**第二步：回答要求**
+
+**情况A：视频相关问题**
+1. 严格基于字幕内容回答，不添加外部信息
+2. 开门见山，先给核心答案
+3. 可适当引用字幕原话
+4. 字幕中无相关信息时，明确说明
+5. 控制在150字以内
+
+**情况B：非视频相关问题（闲聊/无关）**
+1. 简短友好回复（不超过30字）
+2. 提示用户："我可以帮你分析视频内容，试着问关于这个视频的问题吧~"
+
+请直接输出答案："""
+
+            headers = {
+                'Authorization': f'Bearer {AI_API_KEY}',
+                'Content-Type': 'application/json'
+            }
+            
+            payload = {
+                'model': AI_MODEL,
+                'messages': [
+                    {'role': 'system', 'content': '你是视频内容分析专家。你的任务是基于视频字幕准确回答用户问题。只使用字幕中的信息，不添加外部知识。回答要直接、准确、简洁。'},
+                    {'role': 'user', 'content': prompt}
+                ],
+                'temperature': 0.3,
+                'max_tokens': 1000
+            }
+            
+            response = await client.post(
+                AI_API_URL,
+                headers=headers,
+                json=payload,
+                timeout=60.0
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            # 提取AI回答
+            if 'choices' in result and len(result['choices']) > 0:
+                choice = result['choices'][0]
+                message = choice.get('message', {})
+                
+                if 'content' in message and message['content']:
+                    answer = message['content'].strip()
+                elif 'reasoning_content' in message and message['reasoning_content']:
+                    answer = message['reasoning_content'].strip()
+                else:
+                    answer = "AI响应格式异常"
+            else:
+                answer = "AI响应格式异常"
+            
+            return {
+                'answer': answer,
+                'source': 'ai',
+                'subtitle_count': len(subtitles)
+            }
+            
+    except Exception as e:
+        print(f"AI问答失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        return {
+            'answer': f'回答问题时出错: {str(e)}',
+            'source': 'error'
+        }
 
 
 if __name__ == "__main__":

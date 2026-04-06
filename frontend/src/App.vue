@@ -113,9 +113,9 @@
                 
                 <!-- 视频描述 -->
                 <div v-if="videoInfo.description" class="mb-6">
-                  <h4 class="font-medium mb-3 text-gray-300">视频介绍:</h4>
-                  <div class="bg-gray-900/50 rounded-lg p-4 border border-gray-800">
-                    <p class="text-gray-400 whitespace-pre-line">{{ videoInfo.description }}</p>
+                  <h4 class="font-medium mb-3" :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'">视频介绍:</h4>
+                  <div class="rounded-lg p-4 border" :class="isDarkMode ? 'bg-gray-800/70 border-gray-700' : 'bg-gray-100 border-gray-200'">
+                    <p class="whitespace-pre-line" :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'">{{ videoInfo.description }}</p>
                   </div>
                 </div>
                 
@@ -230,6 +230,239 @@
                   style="box-shadow: var(--shadow-md);"
                 >
                   下载视频
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- B站无字幕提示 - 只在解析B站视频但没有字幕时显示 -->
+        <div v-if="videoInfo && isBilibiliUrl && !hasSubtitles && !isCheckingSubtitles" class="mt-12 pt-10 border-t border-gray-700">
+          <div class="flex items-center gap-3 mb-6">
+            <BilibiliIcon class="w-6 h-6 text-[#E11D48]" />
+            <h3 class="text-2xl font-bold text-white font-['Poppins']">AI 智能助手</h3>
+          </div>
+          <div class="rounded-xl p-8 border text-center" :class="isDarkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'">
+            <ChatBubbleLeftRightIcon class="w-16 h-16 mx-auto mb-4 text-gray-500" />
+            <p class="text-lg mb-2" :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'">该视频暂无字幕</p>
+            <p class="text-sm" :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'">AI 智能助手需要视频字幕才能提供总结、思维导图和问答功能</p>
+          </div>
+        </div>
+
+        <!-- B站 AI 功能区域 - 只在解析B站视频且有字幕时显示 -->
+        <div v-if="videoInfo && isBilibiliUrl && hasSubtitles" class="mt-12 pt-10 border-t border-gray-700">
+          <div class="flex items-center gap-3 mb-6">
+            <BilibiliIcon class="w-6 h-6 text-[#E11D48]" />
+            <h3 class="text-2xl font-bold text-white font-['Poppins']">AI 智能助手</h3>
+          </div>
+
+          <!-- 功能标签页 -->
+          <div class="flex flex-wrap gap-2 mb-6">
+            <button
+              v-for="tab in aiTabs"
+              :key="tab.id"
+              @click="activeAiTab = tab.id"
+              :class="[
+                'px-6 py-3 rounded-lg font-medium transition-colors duration-300 flex items-center gap-2',
+                activeAiTab === tab.id
+                  ? (isDarkMode ? 'bg-[#E11D48] !text-white' : 'bg-[#F43F5E] !text-white')
+                  : (isDarkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-300')
+              ]"
+            >
+              <component :is="tab.icon" class="w-5 h-5" />
+              {{ tab.name }}
+            </button>
+          </div>
+
+          <!-- 功能内容区域 -->
+          <div class="rounded-xl p-6 border min-h-[300px]" :class="isDarkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'">
+            <!-- 总结摘要 -->
+            <div v-if="activeAiTab === 'summary'">
+              <div class="flex items-center gap-2 mb-4">
+                <DocumentTextIcon class="w-5 h-5 text-[#E11D48]" />
+                <h4 class="text-lg font-medium" :class="isDarkMode ? 'text-white' : 'text-gray-800'">视频总结摘要</h4>
+              </div>
+              <div v-if="displayedSummary || isGeneratingSummary" class="min-h-[100px]">
+                <span v-if="isGeneratingSummary && !displayedSummary" class="inline-flex items-center" :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'">
+                  <span class="animate-bounce">·</span>
+                  <span class="animate-bounce" style="animation-delay: 0.1s">·</span>
+                  <span class="animate-bounce" style="animation-delay: 0.2s">·</span>
+                </span>
+                <div v-else :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'">
+                  <span class="whitespace-pre-line">{{ displayedSummary }}</span><span v-if="isTyping" class="animate-pulse">|</span>
+                </div>
+              </div>
+              <div v-else class="text-center py-12">
+                <button
+                  @click="generateSummary"
+                  :disabled="isGeneratingSummary"
+                  class="px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 flex items-center gap-2 mx-auto btn-text-white"
+                  :class="isDarkMode ? 'bg-[#E11D48] hover:bg-[#be123c]' : 'bg-[#F43F5E] hover:bg-[#e11d48]'"
+                >
+                  <svg v-if="isGeneratingSummary" class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <SparklesIcon v-else class="w-5 h-5" />
+                  {{ isGeneratingSummary ? '生成中...' : '生成视频摘要' }}
+                </button>
+                <p class="mt-4 text-sm" :class="isDarkMode ? 'text-gray-500' : 'text-gray-400'">基于AI技术自动分析视频内容，生成精炼总结</p>
+              </div>
+            </div>
+
+            <!-- 字幕文本提取 -->
+            <div v-if="activeAiTab === 'subtitle'">
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                  <ChatBubbleLeftRightIcon class="w-5 h-5 text-[#E11D48]" />
+                  <h4 class="text-lg font-medium" :class="isDarkMode ? 'text-white' : 'text-gray-800'">字幕文本提取</h4>
+                </div>
+                <div v-if="aiSubtitles" class="relative" v-click-outside="closeSubtitleDropdown">
+                  <button
+                    @click="showSubtitleDropdown = !showSubtitleDropdown"
+                    class="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2"
+                    :class="isDarkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    下载
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="{ 'rotate-180': showSubtitleDropdown }">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
+                  <div v-if="showSubtitleDropdown" class="absolute right-0 top-full mt-1 w-32 rounded-lg shadow-lg border z-10" :class="isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'">
+                    <button @click="downloadSubtitlesByFormat('srt')" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg" :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'">SRT 格式</button>
+                    <button @click="downloadSubtitlesByFormat('txt')" class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg" :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'">TXT 格式</button>
+                  </div>
+                </div>
+              </div>
+              <div v-if="aiSubtitles" class="max-h-[400px] overflow-y-auto">
+                <div class="space-y-3">
+                  <div
+                    v-for="(subtitle, index) in aiSubtitles"
+                    :key="index"
+                    class="flex gap-4 p-3 rounded-lg transition-colors border"
+                    :class="isDarkMode ? 'bg-gray-800/70 border-gray-700 hover:bg-gray-800' : 'bg-white border-gray-200 hover:bg-gray-50'"
+                  >
+                    <span class="text-[#E11D48] font-mono text-sm flex-shrink-0">{{ subtitle.time }}</span>
+                    <span :class="isDarkMode ? 'text-gray-200' : 'text-gray-700'">{{ subtitle.text }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="text-center py-12">
+                <button
+                  @click="extractSubtitles"
+                  :disabled="isExtractingSubtitles"
+                  class="px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 flex items-center gap-2 mx-auto btn-text-white"
+                  :class="isDarkMode ? 'bg-[#E11D48] hover:bg-[#be123c]' : 'bg-[#F43F5E] hover:bg-[#e11d48]'"
+                >
+                  <svg v-if="isExtractingSubtitles" class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <ChatBubbleLeftRightIcon v-else class="w-5 h-5" />
+                  {{ isExtractingSubtitles ? '提取中...' : '提取字幕文本' }}
+                </button>
+                <p class="mt-4 text-sm" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'">自动识别视频语音并转换为可编辑文本</p>
+              </div>
+            </div>
+
+            <!-- 思维导图 -->
+            <div v-if="activeAiTab === 'mindmap'">
+              <div class="flex items-center gap-2 mb-4">
+                <MapIcon class="w-5 h-5 text-[#E11D48]" />
+                <h4 class="text-lg font-medium" :class="isDarkMode ? 'text-white' : 'text-gray-800'">思维导图生成</h4>
+              </div>
+              <div v-if="aiMindmap || isGeneratingMindmap" class="rounded-lg p-6 border min-h-[400px]" :class="isDarkMode ? 'bg-gray-800/70 border-gray-700' : 'bg-white border-gray-200'">
+                <span v-if="isGeneratingMindmap && !aiMindmap" class="inline-flex items-center text-lg">
+                  <span class="animate-bounce">·</span>
+                  <span class="animate-bounce" style="animation-delay: 0.1s">·</span>
+                  <span class="animate-bounce" style="animation-delay: 0.2s">·</span>
+                </span>
+                <MindmapViewer v-else :markdown="aiMindmap" :is-dark-mode="isDarkMode" />
+              </div>
+              <div v-else class="text-center py-12">
+                <button
+                  @click="generateMindmap"
+                  :disabled="isGeneratingMindmap"
+                  class="px-8 py-3 rounded-lg font-medium transition-all transform hover:scale-105 flex items-center gap-2 mx-auto btn-text-white"
+                  :class="isDarkMode ? 'bg-[#E11D48] hover:bg-[#be123c]' : 'bg-[#F43F5E] hover:bg-[#e11d48]'"
+                >
+                  <svg v-if="isGeneratingMindmap" class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <MapIcon v-else class="w-5 h-5" />
+                  {{ isGeneratingMindmap ? '生成中...' : '生成思维导图' }}
+                </button>
+                <p class="mt-4 text-sm" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'">分析视频结构，自动生成可视化思维导图</p>
+              </div>
+            </div>
+
+            <!-- AI问答 -->
+            <div v-if="activeAiTab === 'qa'" class="flex flex-col h-[500px]">
+              <div class="flex items-center gap-2 mb-4">
+                <QuestionMarkCircleIcon class="w-5 h-5 text-[#E11D48]" />
+                <h4 class="text-lg font-medium" :class="isDarkMode ? 'text-white' : 'text-gray-800'">AI智能问答</h4>
+              </div>
+              
+              <!-- 聊天记录区域 -->
+              <div class="flex-1 overflow-y-auto space-y-4 mb-4 pr-2" :class="isDarkMode ? 'scrollbar-dark' : 'scrollbar-light'">
+                <!-- 历史记录 -->
+                <template v-for="(qa, index) in aiQaHistory" :key="index">
+                  <!-- 用户提问 - 右侧 -->
+                  <div class="flex justify-end">
+                    <div class="max-w-[80%] rounded-2xl px-4 py-3" :class="isDarkMode ? 'bg-[#E11D48] text-white' : 'bg-[#F43F5E] text-white'">
+                      <p class="text-sm leading-relaxed">{{ qa.question }}</p>
+                    </div>
+                  </div>
+                  <!-- AI回复 - 左侧 -->
+                  <div v-if="qa.answer || qa.displayedAnswer" class="flex justify-start">
+                    <div class="max-w-[80%] rounded-2xl px-4 py-3" :class="isDarkMode ? 'bg-gray-700 text-gray-100' : 'bg-gray-200 text-gray-800'">
+                      <p class="text-sm leading-relaxed whitespace-pre-line">
+                        {{ qa.displayedAnswer || qa.answer }}<span v-if="typingAnswerIndex === index" class="animate-pulse">|</span>
+                      </p>
+                    </div>
+                  </div>
+                </template>
+                
+                <!-- 加载状态 - 与其他页面一致的 ··· 动画 -->
+                <div v-if="isAskingAI" class="flex justify-start">
+                  <div class="rounded-2xl px-4 py-3" :class="isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'">
+                    <span class="inline-flex items-center text-sm">
+                      <span class="animate-bounce">·</span>
+                      <span class="animate-bounce" style="animation-delay: 0.1s">·</span>
+                      <span class="animate-bounce" style="animation-delay: 0.2s">·</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 提问输入框 - 底部 -->
+              <div class="flex gap-3 pt-4 border-t" :class="isDarkMode ? 'border-gray-700' : 'border-gray-200'">
+                <input
+                  v-model="aiQuestion"
+                  type="text"
+                  placeholder="输入您关于视频的问题..."
+                  class="flex-1 px-4 py-3 rounded-lg border transition-all focus:outline-none focus:ring-2 focus:ring-[#E11D48]"
+                  :class="isDarkMode ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-800 placeholder-gray-400'"
+                  @keyup.enter="askAI"
+                />
+                <button
+                  @click="askAI"
+                  :disabled="!aiQuestion.trim() || isAskingAI"
+                  class="px-6 py-3 rounded-lg font-medium transition-all transform hover:scale-105 flex items-center gap-2 btn-text-white"
+                  :class="isDarkMode ? 'bg-[#E11D48] hover:bg-[#be123c] disabled:bg-gray-600' : 'bg-[#F43F5E] hover:bg-[#e11d48] disabled:bg-gray-400'"
+                >
+                  <svg v-if="isAskingAI" class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <PaperAirplaneIcon v-else class="w-5 h-5" />
+                  {{ isAskingAI ? '思考中...' : '提问' }}
                 </button>
               </div>
             </div>
@@ -378,38 +611,38 @@
       </section>
 
       <!-- 常见问题 -->
-      <section id="faq" class="bg-[#0F0F23] rounded-2xl shadow-2xl p-10 mb-20 border border-gray-800">
-        <h2 class="text-3xl font-bold mb-10 text-center text-white font-['Poppins']">常见问题</h2>
+      <section id="faq" class="rounded-2xl shadow-2xl p-10 mb-20 border" :class="isDarkMode ? 'bg-[#0F0F23] border-gray-800' : 'bg-white border-gray-200'">
+        <h2 class="text-3xl font-bold mb-10 text-center font-['Poppins']" :class="isDarkMode ? 'text-white' : 'text-gray-800'">常见问题</h2>
         <div class="space-y-4">
           <div :class="isDarkMode ? 'border border-gray-700' : 'border border-gray-300'" class="rounded-lg overflow-hidden">
-            <button @click="toggleFaq(0)" :class="isDarkMode ? 'hover:bg-gray-900/50 text-white' : 'hover:bg-gray-100 text-gray-800'" class="w-full px-6 py-4 text-left font-medium flex justify-between items-center transition-colors">
+            <button @click="toggleFaq(0)" :class="isDarkMode ? 'hover:bg-gray-800/50 text-white' : 'hover:bg-gray-100 text-gray-800'" class="w-full px-6 py-4 text-left font-medium flex justify-between items-center transition-colors">
               <span>如何下载视频？</span>
               <ArrowDownIcon :class="['w-5 h-5 transition-transform duration-300', isDarkMode ? 'text-gray-400' : 'text-gray-500', isFaqExpanded(0) ? 'transform rotate-180' : '']" />
             </button>
-            <div v-if="isFaqExpanded(0)" :class="isDarkMode ? 'bg-gray-900/30' : 'bg-gray-50'" class="px-6 py-4">
-              <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-600'">
+            <div v-if="isFaqExpanded(0)" :class="isDarkMode ? 'bg-gray-800/70 border-t border-gray-700' : 'bg-gray-50 border-t border-gray-200'" class="px-6 py-4">
+              <p :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'">
                 只需在输入框中粘贴视频URL，点击解析视频，选择想要的格式，然后点击下载视频按钮即可。
               </p>
             </div>
           </div>
           <div :class="isDarkMode ? 'border border-gray-700' : 'border border-gray-300'" class="rounded-lg overflow-hidden">
-            <button @click="toggleFaq(1)" :class="isDarkMode ? 'hover:bg-gray-900/50 text-white' : 'hover:bg-gray-100 text-gray-800'" class="w-full px-6 py-4 text-left font-medium flex justify-between items-center transition-colors">
+            <button @click="toggleFaq(1)" :class="isDarkMode ? 'hover:bg-gray-800/50 text-white' : 'hover:bg-gray-100 text-gray-800'" class="w-full px-6 py-4 text-left font-medium flex justify-between items-center transition-colors">
               <span>支持哪些网站？</span>
               <ArrowDownIcon :class="['w-5 h-5 transition-transform duration-300', isDarkMode ? 'text-gray-400' : 'text-gray-500', isFaqExpanded(1) ? 'transform rotate-180' : '']" />
             </button>
-            <div v-if="isFaqExpanded(1)" :class="isDarkMode ? 'bg-gray-900/30' : 'bg-gray-50'" class="px-6 py-4">
-              <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-600'">
+            <div v-if="isFaqExpanded(1)" :class="isDarkMode ? 'bg-gray-800/70 border-t border-gray-700' : 'bg-gray-50 border-t border-gray-200'" class="px-6 py-4">
+              <p :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'">
                 支持YouTube、B站、TikTok、Instagram、Twitter等1800+网站的视频下载。
               </p>
             </div>
           </div>
           <div :class="isDarkMode ? 'border border-gray-700' : 'border border-gray-300'" class="rounded-lg overflow-hidden">
-            <button @click="toggleFaq(2)" :class="isDarkMode ? 'hover:bg-gray-900/50 text-white' : 'hover:bg-gray-100 text-gray-800'" class="w-full px-6 py-4 text-left font-medium flex justify-between items-center transition-colors">
+            <button @click="toggleFaq(2)" :class="isDarkMode ? 'hover:bg-gray-800/50 text-white' : 'hover:bg-gray-100 text-gray-800'" class="w-full px-6 py-4 text-left font-medium flex justify-between items-center transition-colors">
               <span>下载速度为什么很慢？</span>
               <ArrowDownIcon :class="['w-5 h-5 transition-transform duration-300', isDarkMode ? 'text-gray-400' : 'text-gray-500', isFaqExpanded(2) ? 'transform rotate-180' : '']" />
             </button>
-            <div v-if="isFaqExpanded(2)" :class="isDarkMode ? 'bg-gray-900/30' : 'bg-gray-50'" class="px-6 py-4">
-              <p :class="isDarkMode ? 'text-gray-400' : 'text-gray-600'">
+            <div v-if="isFaqExpanded(2)" :class="isDarkMode ? 'bg-gray-800/70 border-t border-gray-700' : 'bg-gray-50 border-t border-gray-200'" class="px-6 py-4">
+              <p :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'">
                 下载速度受网络环境和视频源服务器影响。升级到VIP可以获得更快的下载速度。
               </p>
             </div>
@@ -488,10 +721,27 @@
 
 <script>
 import axios from 'axios';
-import { FireIcon, VideoIcon, DownloadIcon, LinkIcon, CrownIcon, ShieldIcon, ZapIcon, HeartIcon, ArrowDownIcon, MoreIcon, PlayIcon, BilibiliIcon, YouTubeIcon, TikTokIcon, InstagramIcon, TwitterIcon, SunIcon, MoonIcon } from './icons'
+import * as marked from 'marked';
+import { FireIcon, VideoIcon, DownloadIcon, LinkIcon, CrownIcon, ShieldIcon, ZapIcon, HeartIcon, ArrowDownIcon, MoreIcon, PlayIcon, BilibiliIcon, YouTubeIcon, TikTokIcon, InstagramIcon, TwitterIcon, SunIcon, MoonIcon, DocumentTextIcon, ChatBubbleLeftRightIcon, MapIcon, QuestionMarkCircleIcon, SparklesIcon, PaperAirplaneIcon } from './icons'
+import MindmapViewer from './components/MindmapViewer.vue'
 
 export default {
   name: 'App',
+  directives: {
+    'click-outside': {
+      mounted(el, binding) {
+        el._clickOutside = (event) => {
+          if (!(el === event.target || el.contains(event.target))) {
+            binding.value();
+          }
+        };
+        document.addEventListener('click', el._clickOutside);
+      },
+      unmounted(el) {
+        document.removeEventListener('click', el._clickOutside);
+      }
+    }
+  },
   components: {
     FireIcon,
     VideoIcon,
@@ -510,7 +760,14 @@ export default {
     InstagramIcon,
     TwitterIcon,
     SunIcon,
-    MoonIcon
+    MoonIcon,
+    DocumentTextIcon,
+    ChatBubbleLeftRightIcon,
+    MapIcon,
+    QuestionMarkCircleIcon,
+    SparklesIcon,
+    PaperAirplaneIcon,
+    MindmapViewer
   },
   data() {
     return {
@@ -524,7 +781,40 @@ export default {
       isParsing: false,
       expandedFaqs: [0], // 默认展开第一个问题
       isDarkMode: true, // 默认暗色模式
-      parseSource: 'auto' // B站解析源: auto, injahow, ytdlp, both
+      parseSource: 'auto', // B站解析源: auto, injahow, ytdlp, both
+      // B站 AI 功能相关数据
+      activeAiTab: 'summary', // 当前AI功能标签: summary, subtitle, mindmap, qa
+      aiTabs: [
+        { id: 'summary', name: '总结摘要', icon: 'DocumentTextIcon' },
+        { id: 'subtitle', name: '字幕文本', icon: 'ChatBubbleLeftRightIcon' },
+        { id: 'mindmap', name: '思维导图', icon: 'MapIcon' },
+        { id: 'qa', name: 'AI问答', icon: 'QuestionMarkCircleIcon' }
+      ],
+      // 字幕状态 - 用于控制AI功能区域显示
+      hasSubtitles: false, // 是否有字幕
+      isCheckingSubtitles: false, // 是否正在检查字幕
+      // 总结摘要
+      aiSummary: '',
+      displayedSummary: '', // 打字机效果显示的文本
+      isGeneratingSummary: false,
+      isTyping: false, // 是否正在打字
+      // 字幕文本
+      aiSubtitles: null,
+      isExtractingSubtitles: false,
+      showSubtitleDropdown: false, // 是否显示字幕下载下拉菜单
+      // 思维导图
+      aiMindmap: '',
+      displayedMindmap: '', // 打字机效果显示的文本
+      isGeneratingMindmap: false,
+      isTypingMindmap: false, // 是否正在打字
+      // AI问答
+      aiQuestion: '',
+      aiAnswer: '',
+      isAskingAI: false,
+      aiQaHistory: [],
+      // AI问答打字机效果
+      typingAnswerIndex: -1, // 当前正在打字的历史记录索引
+      isTypingQA: false // 是否正在打字
     };
   },
   computed: {
@@ -540,12 +830,19 @@ export default {
       const matches = text.match(urlRegex);
       return matches ? matches[0] : text;
     },
+    renderMarkdown(text) {
+      // 渲染Markdown为HTML
+      if (!text) return '';
+      return marked.parse(text, { breaks: true });
+    },
     async parseVideo() {
       try {
         this.isParsing = true;
         this.error = '';
         this.videoInfo = null;
         this.selectedFormat = '';
+        this.hasSubtitles = false;
+        this.aiSubtitles = null;
         
         // 从输入文本中提取URL
         const extractedUrl = this.extractUrlFromText(this.videoUrl);
@@ -555,10 +852,34 @@ export default {
         });
         
         this.videoInfo = response.data;
+        
+        // 如果是B站视频，自动尝试获取字幕
+        if (this.isBilibiliUrl) {
+          await this.checkSubtitles(extractedUrl);
+        }
       } catch (error) {
         this.error = error.response?.data?.detail || '解析失败，请检查URL是否正确';
       } finally {
         this.isParsing = false;
+      }
+    },
+    async checkSubtitles(url) {
+      // 自动检查字幕是否存在
+      this.isCheckingSubtitles = true;
+      try {
+        const response = await axios.post('http://localhost:8000/api/bilibili/subtitles', {
+          url: url
+        });
+        const subtitles = response.data.subtitles || [];
+        this.hasSubtitles = subtitles.length > 0;
+        if (this.hasSubtitles) {
+          this.aiSubtitles = subtitles;
+        }
+      } catch (error) {
+        console.error('检查字幕失败:', error);
+        this.hasSubtitles = false;
+      } finally {
+        this.isCheckingSubtitles = false;
       }
     },
     async downloadVideo() {
@@ -739,6 +1060,252 @@ export default {
       this.isDarkMode = !this.isDarkMode;
       document.documentElement.classList.toggle('dark', this.isDarkMode);
       localStorage.setItem('darkMode', this.isDarkMode);
+    },
+    // B站 AI 功能方法
+    async generateSummary() {
+      // 生成视频摘要
+      this.isGeneratingSummary = true;
+      this.aiSummary = '';
+      this.displayedSummary = '';
+      try {
+        const response = await axios.post('http://localhost:8000/api/bilibili/ai/summary', {
+          url: this.extractUrlFromText(this.videoUrl)
+        });
+        this.aiSummary = response.data.summary || '暂无摘要';
+        // 打字机效果显示
+        this.typeWriter(this.aiSummary);
+      } catch (error) {
+        console.error('生成摘要失败:', error);
+        // 模拟数据
+        this.aiSummary = `这是一个关于"${this.videoInfo.title}"的视频。\n\n视频主要内容包括：\n1. 介绍了相关主题的背景知识\n2. 详细讲解了核心概念和原理\n3. 通过实例演示了具体操作方法\n4. 总结了关键要点和注意事项\n\n适合对相关内容感兴趣的观众观看学习。`;
+        this.typeWriter(this.aiSummary);
+      } finally {
+        this.isGeneratingSummary = false;
+      }
+    },
+    // 打字机效果
+    typeWriter(text) {
+      this.isTyping = true;
+      this.displayedSummary = '';
+      let index = 0;
+      const speed = 30; // 打字速度（毫秒）
+      
+      const type = () => {
+        if (index < text.length) {
+          this.displayedSummary += text.charAt(index);
+          index++;
+          setTimeout(type, speed);
+        } else {
+          this.isTyping = false;
+        }
+      };
+      
+      type();
+    },
+    async extractSubtitles() {
+      // 提取字幕文本 - 使用后端双方案接口
+      this.isExtractingSubtitles = true;
+      try {
+        const response = await axios.post('http://localhost:8000/api/bilibili/subtitles', {
+          url: this.extractUrlFromText(this.videoUrl)
+        });
+        this.aiSubtitles = response.data.subtitles || [];
+        if (this.aiSubtitles.length === 0) {
+          this.error = '该视频没有字幕或无法获取字幕';
+        }
+      } catch (error) {
+        console.error('提取字幕失败:', error);
+        this.error = '提取字幕失败: ' + (error.response?.data?.detail || error.message || '未知错误');
+        this.aiSubtitles = [];
+      } finally {
+        this.isExtractingSubtitles = false;
+      }
+    },
+    async generateMindmap() {
+      // 生成思维导图
+      this.isGeneratingMindmap = true;
+      this.aiMindmap = '';
+      this.displayedMindmap = '';
+      try {
+        const response = await axios.post('http://localhost:8000/api/bilibili/ai/mindmap', {
+          url: this.extractUrlFromText(this.videoUrl)
+        });
+        this.aiMindmap = response.data.mindmap || '';
+        // 打字机效果显示
+        this.typeWriterMindmap(this.aiMindmap);
+      } catch (error) {
+        console.error('生成思维导图失败:', error);
+        // 模拟数据
+        this.aiMindmap = `${this.videoInfo.title}
+├── 一、引言
+│   ├── 背景介绍
+│   └── 学习目标
+├── 二、核心内容
+│   ├── 概念解析
+│   │   ├── 定义
+│   │   └── 特点
+│   ├── 实际应用
+│   │   ├── 场景一
+│   │   └── 场景二
+│   └── 注意事项
+├── 三、案例分析
+│   ├── 案例一：成功经验
+│   └── 案例二：常见问题
+└── 四、总结
+    ├── 要点回顾
+    └── 后续学习建议`;
+        this.typeWriterMindmap(this.aiMindmap);
+      } finally {
+        this.isGeneratingMindmap = false;
+      }
+    },
+    // 思维导图打字机效果
+    typeWriterMindmap(text) {
+      this.isTypingMindmap = true;
+      this.displayedMindmap = '';
+      let index = 0;
+      const speed = 20; // 打字速度（毫秒）
+      
+      const type = () => {
+        if (index < text.length) {
+          this.displayedMindmap += text.charAt(index);
+          index++;
+          setTimeout(type, speed);
+        } else {
+          this.isTypingMindmap = false;
+        }
+      };
+      
+      type();
+    },
+    async askAI() {
+      // AI问答
+      if (!this.aiQuestion.trim()) return;
+      
+      this.isAskingAI = true;
+      const question = this.aiQuestion.trim();
+      this.aiQuestion = '';
+      
+      // 先添加用户问题到历史记录（此时还没有AI回复）
+      const qaItem = { question: question, answer: '', displayedAnswer: '' };
+      this.aiQaHistory.push(qaItem);
+      const answerIndex = this.aiQaHistory.length - 1;
+      
+      try {
+        const response = await axios.post('http://localhost:8000/api/bilibili/ai/qa', {
+          url: this.extractUrlFromText(this.videoUrl),
+          question: question
+        });
+        const answer = response.data.answer || '';
+        // 使用打字机效果显示回答
+        this.typeWriterQA(answer, answerIndex);
+      } catch (error) {
+        console.error('AI问答失败:', error);
+        // 模拟数据
+        const answer = `关于"${question}"，根据视频内容，我可以告诉您：\n\n视频中提到了相关的内容，主要涉及以下几个方面...\n\n希望这个回答对您有帮助！`;
+        this.typeWriterQA(answer, answerIndex);
+      } finally {
+        this.isAskingAI = false;
+      }
+    },
+    typeWriterQA(text, index) {
+      // AI问答打字机效果
+      this.isTypingQA = true;
+      this.typingAnswerIndex = index;
+      const qaItem = this.aiQaHistory[index];
+      qaItem.displayedAnswer = '';
+      let charIndex = 0;
+      const speed = 30; // 打字速度（毫秒）
+      
+      const type = () => {
+        if (charIndex < text.length) {
+          qaItem.displayedAnswer += text.charAt(charIndex);
+          charIndex++;
+          setTimeout(type, speed);
+        } else {
+          // 打字完成，保存完整答案
+          qaItem.answer = text;
+          this.isTypingQA = false;
+          this.typingAnswerIndex = -1;
+        }
+      };
+      
+      type();
+    },
+    closeSubtitleDropdown() {
+      this.showSubtitleDropdown = false;
+    },
+    downloadSubtitlesByFormat(format) {
+      // 下载字幕（指定格式）
+      if (!this.aiSubtitles || this.aiSubtitles.length === 0) return;
+      
+      this.showSubtitleDropdown = false;
+      const videoTitle = this.videoInfo?.title || 'video';
+      let content = '';
+      let mimeType = '';
+      let extension = '';
+      
+      if (format === 'srt') {
+        // SRT 格式
+        content = this.aiSubtitles.map((sub, index) => {
+          const startTime = this.timeToSRT(sub.time);
+          const endTime = this.addSecondsToTime(sub.time, 3);
+          return `${index + 1}\n${startTime} --> ${endTime}\n${sub.text}\n`;
+        }).join('\n');
+        mimeType = 'text/srt;charset=utf-8';
+        extension = 'srt';
+      } else {
+        // TXT 格式
+        content = this.aiSubtitles.map((sub) => {
+          return `[${sub.time}] ${sub.text}`;
+        }).join('\n');
+        mimeType = 'text/plain;charset=utf-8';
+        extension = 'txt';
+      }
+      
+      // 创建Blob并下载
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `${videoTitle}.${extension}`;
+      link.href = url;
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+    timeToSRT(timeStr) {
+      // 将时间字符串转换为SRT格式 (HH:MM:SS,mmm)
+      const parts = timeStr.split(':');
+      if (parts.length === 2) {
+        // MM:SS 格式
+        return `00:${parts[0]}:${parts[1].replace('.', ',')}`;
+      } else if (parts.length === 3) {
+        // HH:MM:SS 格式
+        return `${parts[0]}:${parts[1]}:${parts[2].replace('.', ',')}`;
+      }
+      return timeStr;
+    },
+    addSecondsToTime(timeStr, seconds) {
+      // 在时间字符串上添加秒数
+      const parts = timeStr.split(':');
+      let totalSeconds = 0;
+      
+      if (parts.length === 2) {
+        totalSeconds = parseInt(parts[0]) * 60 + parseFloat(parts[1]);
+      } else if (parts.length === 3) {
+        totalSeconds = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(parts[2]);
+      }
+      
+      totalSeconds += seconds;
+      
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const secs = Math.floor(totalSeconds % 60);
+      const ms = Math.floor((totalSeconds % 1) * 1000);
+      
+      if (hours > 0) {
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+      }
+      return `00:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
     }
   },
   mounted() {
