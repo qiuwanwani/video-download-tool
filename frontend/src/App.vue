@@ -133,7 +133,7 @@
                     </p>
                     <p class="text-gray-400 flex items-center">
                       <span class="w-20 text-gray-500">格式数:</span>
-                      {{ videoInfo.formats.length }}
+                      {{ videoInfo.formats?.length || 0 }}
                     </p>
                     <p v-if="videoInfo.subtitles && videoInfo.subtitles.length > 0" class="text-gray-400 flex items-center">
                       <span class="w-20 text-gray-500">字幕:</span>
@@ -828,7 +828,18 @@ export default {
       // 从文本中提取URL
       const urlRegex = /(https?:\/\/[^\s]+)/g;
       const matches = text.match(urlRegex);
-      return matches ? matches[0] : text;
+      if (matches) {
+        const url = matches[0];
+        // 处理抖音搜索链接，提取modal_id并构建视频链接
+        if (url.includes('douyin.com/search') && url.includes('modal_id=')) {
+          const modalIdMatch = url.match(/modal_id=([^&]+)/);
+          if (modalIdMatch && modalIdMatch[1]) {
+            return `https://www.douyin.com/video/${modalIdMatch[1]}`;
+          }
+        }
+        return url;
+      }
+      return text;
     },
     renderMarkdown(text) {
       // 渲染Markdown为HTML
@@ -847,7 +858,7 @@ export default {
         // 从输入文本中提取URL
         const extractedUrl = this.extractUrlFromText(this.videoUrl);
         
-        const response = await axios.get('http://localhost:8000/api/parse', {
+        const response = await axios.get('/api/parse', {
           params: { url: extractedUrl }
         });
         
@@ -867,7 +878,7 @@ export default {
       // 自动检查字幕是否存在
       this.isCheckingSubtitles = true;
       try {
-        const response = await axios.post('http://localhost:8000/api/bilibili/subtitles', {
+        const response = await axios.post('/api/bilibili/subtitles', {
           url: url
         });
         const subtitles = response.data.subtitles || [];
@@ -891,7 +902,7 @@ export default {
         // 从输入文本中提取URL
         const extractedUrl = this.extractUrlFromText(this.videoUrl);
         
-        const response = await axios.get('http://localhost:8000/api/download', {
+        const response = await axios.get('/api/download', {
           params: {
             url: extractedUrl,
             format_id: this.selectedFormat
@@ -902,7 +913,7 @@ export default {
         this.saveToHistory(response.data);
         
         // 使用后端代理下载，避免跨域和403问题
-        const downloadUrl = `http://localhost:8000/api/proxy-download?url=${encodeURIComponent(response.data.direct_link)}&filename=${encodeURIComponent(response.data.title)}.${response.data.ext}`;
+        const downloadUrl = `/api/proxy-download?url=${encodeURIComponent(response.data.direct_link)}&filename=${encodeURIComponent(response.data.title)}.${response.data.ext}`;
         window.open(downloadUrl, '_blank');
       } catch (error) {
         this.error = error.response?.data?.detail || '下载失败，请稍后重试';
@@ -955,7 +966,7 @@ export default {
     getProxyImageUrl(url) {
       if (!url) return '';
       // 使用后端代理接口处理跨域图片
-      return `http://localhost:8000/api/proxy-image?url=${encodeURIComponent(url)}`;
+      return `/api/proxy-image?url=${encodeURIComponent(url)}`;
     },
     getVideoSource(url) {
       if (!url) return '未知';
@@ -1014,7 +1025,7 @@ export default {
           // B站视频使用 injahow 播放源
           if (this.isBilibiliUrl) {
             const extractedUrl = this.extractUrlFromText(this.videoUrl);
-            const response = await axios.get('http://localhost:8000/api/get-direct-link', {
+            const response = await axios.get('/api/get-direct-link', {
               params: {
                 url: extractedUrl,
                 format_id: highestFormat.format_id,
@@ -1028,7 +1039,7 @@ export default {
           
           // 其他平台需要请求获取代理地址
           const extractedUrl = this.extractUrlFromText(this.videoUrl);
-          const response = await axios.get('http://localhost:8000/api/get-direct-link', {
+          const response = await axios.get('/api/get-direct-link', {
             params: {
               url: extractedUrl,
               format_id: highestFormat.format_id
@@ -1068,7 +1079,7 @@ export default {
       this.aiSummary = '';
       this.displayedSummary = '';
       try {
-        const response = await axios.post('http://localhost:8000/api/bilibili/ai/summary', {
+        const response = await axios.post('/api/bilibili/ai/summary', {
           url: this.extractUrlFromText(this.videoUrl)
         });
         this.aiSummary = response.data.summary || '暂无摘要';
@@ -1106,7 +1117,7 @@ export default {
       // 提取字幕文本 - 使用后端双方案接口
       this.isExtractingSubtitles = true;
       try {
-        const response = await axios.post('http://localhost:8000/api/bilibili/subtitles', {
+        const response = await axios.post('/api/bilibili/subtitles', {
           url: this.extractUrlFromText(this.videoUrl)
         });
         this.aiSubtitles = response.data.subtitles || [];
@@ -1127,7 +1138,7 @@ export default {
       this.aiMindmap = '';
       this.displayedMindmap = '';
       try {
-        const response = await axios.post('http://localhost:8000/api/bilibili/ai/mindmap', {
+        const response = await axios.post('/api/bilibili/ai/mindmap', {
           url: this.extractUrlFromText(this.videoUrl)
         });
         this.aiMindmap = response.data.mindmap || '';
@@ -1192,7 +1203,7 @@ export default {
       const answerIndex = this.aiQaHistory.length - 1;
       
       try {
-        const response = await axios.post('http://localhost:8000/api/bilibili/ai/qa', {
+        const response = await axios.post('/api/bilibili/ai/qa', {
           url: this.extractUrlFromText(this.videoUrl),
           question: question
         });

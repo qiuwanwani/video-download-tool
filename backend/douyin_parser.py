@@ -293,7 +293,7 @@ class DouyinParser:
         from urllib.parse import quote
         proxy_urls = {}
         for fmt_id, video_url in direct_urls.items():
-            proxy_urls[fmt_id] = f"http://localhost:8000/api/proxy-video?url={quote(video_url, safe='')}"
+            proxy_urls[fmt_id] = f"/api/proxy-video?url={quote(video_url, safe='')}"
         
         return {
             'title': title,

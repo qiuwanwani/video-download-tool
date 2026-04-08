@@ -1,5 +1,8 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pathlib import Path
 import yt_dlp
 import json
 import os
@@ -129,7 +132,7 @@ async def parse_bilibili_with_injahow(url: str) -> Dict[str, Any]:
                 
                 # 构建代理地址
                 from urllib.parse import quote
-                proxy_url = f"http://localhost:8000/api/proxy-video?url={quote(video_url, safe='')}"
+                proxy_url = f"/api/proxy-video?url={quote(video_url, safe='')}"
                 
                 format_id = str(i)
                 formats.append({
@@ -171,7 +174,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # 解析视频信息
 @app.get("/api/parse")
@@ -288,7 +290,7 @@ async def parse_video(url: str = Query(..., description="视频URL")):
                         # 构建代理URL
                         video_url = fmt.get('url', '')
                         from urllib.parse import quote
-                        all_proxy_urls[fmt.get('format_id')] = f"http://localhost:8000/api/proxy-video?url={quote(video_url, safe='')}"
+                        all_proxy_urls[fmt.get('format_id')] = f"/api/proxy-video?url={quote(video_url, safe='')}"
                         all_direct_urls[fmt.get('format_id')] = video_url
                 
                 # 如果 injahow 没有获取到基本信息，使用 yt-dlp 的
@@ -519,7 +521,7 @@ async def get_direct_link(
             # 对于其他平台，也需要代理播放地址避免403
             video_url = selected_format.get('url', '')
             from urllib.parse import quote
-            proxy_url = f"http://localhost:8000/api/proxy-video?url={quote(video_url, safe='')}"
+            proxy_url = f"/api/proxy-video?url={quote(video_url, safe='')}"
             
             return {
                 'direct_link': proxy_url,
@@ -626,6 +628,9 @@ async def proxy_image(
         # B站图片需要Referer
         if 'bilibili.com' in url or 'hdslb.com' in url:
             headers['Referer'] = 'https://www.bilibili.com/'
+        # 抖音图片需要Referer
+        elif 'douyinpic.com' in url or 'douyin.com' in url:
+            headers['Referer'] = 'https://www.douyin.com/'
         
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers, follow_redirects=True, timeout=10.0)
@@ -1435,6 +1440,16 @@ async def ai_qa(request: dict):
             'answer': f'回答问题时出错: {str(e)}',
             'source': 'error'
         }
+
+
+# 挂载静态文件
+static_dir = Path("/www/wwwroot/vd/dist")
+if static_dir.exists():
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+    print("静态文件服务已挂载")
+else:
+    print("警告: dist目录不存在，静态文件服务未挂载")
+    print(f"检查路径: {static_dir}")
 
 
 if __name__ == "__main__":
